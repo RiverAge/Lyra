@@ -188,3 +188,117 @@ Agent 输出要求:
 ```
 
 当前阶段根据实际工作流位置填写。
+
+---
+
+## 6. 多 agent 并行模式
+
+§1-§5 是默认的串行模式(架构师 → 单执行者 agent → 审计)。§6 是可选增强:当有多个无依赖任务时,用 git worktree 隔离工作目录,多 agent 并行执行,rebase + ff merge 合回主分支。
+
+### 6.1 适用场景
+
+适合并行:
+- 多个无依赖任务可同时下发(如:前端组件 A + 前端组件 B + 后端接口 C)
+- 长任务并行(一个 agent 跑扫描实现,另一个 agent 跑歌词编辑器骨架)
+
+不适合并行:
+- 有文件依赖的任务(B 要改 A 刚写的文件)
+- 需要看前一个任务结果才能继续的任务
+- 单文件小修(串行更简单,开 worktree 的成本不划算)
+
+### 6.2 任务拆分约束(架构师职责)
+
+架构师拆分并行任务时必须保证:
+
+- **文件级零重叠**:列出每个任务会改的文件集,任两个任务的文件集取交集必须为空
+- 若两任务都要改同一文件 → 合并为单任务串行,或重新拆分边界使文件不重叠
+- 每个任务必须自包含:读自己的前置文档,不依赖另一个 agent 的中间产物
+- 任务命名:短横线分隔英文小写,如 `scan-debounce` / `lyric-editor-skeleton`
+- 文件集包含新增文件时,新增路径也不能与其他任务重叠(含目录前缀)
+
+### 6.3 worktree 创建流程(架构师执行)
+
+```
+# 1. 确保 master 干净且最新
+cd <Lyra主仓>
+git checkout master
+
+# 2. 为任务创建分支 + worktree(仓外目录)
+git worktree add ../Lyra-worktrees/<任务名> -b agent/<任务名>
+
+# 3. 进入 worktree,装依赖(worktree 不共享 node_modules)
+cd ../Lyra-worktrees/<任务名>
+pnpm --dir frontend install --frozen-lockfile
+```
+
+约定:
+- worktree 物理路径固定:`<Lyra主仓父目录>/Lyra-worktrees/<任务名>`(即 `C:\Users\Mercury\Desktop\src\media\Lyra-worktrees\<任务名>`)
+- 分支名 `agent/<任务名>`,worktree 目录名同 `<任务名>`
+- `pnpm install` 是必须步骤:worktree 是独立工作树,node_modules 不共享(见 §6.5)
+- `--frozen-lockfile` 加速:lockfile 已在主仓固化,worktree 复用
+
+### 6.4 agent 执行约束(在 worktree 内)
+
+- agent 在 worktree 目录内工作,所有 commit 落在 `agent/<任务名>` 分支
+- agent 只改本任务文件集内的文件,不碰其他文件(架构师已在 §6.2 保证零重叠)
+- agent 完成后跑验证(Python 侧 `ruff`/`mypy`/`pytest`;前端侧 `pnpm run lint`/`pnpm run typecheck`),全过后通知架构师
+- **agent 不做 rebase,不 merge,不自解冲突**——这些是架构师职责(见 §6.6)
+
+### 6.5 worktree 下的 hooks/依赖工程现实(重要)
+
+worktree 是独立物理目录,有两个工程问题必须知晓:
+
+1. **husky hooks 不触发**:`core.hooksPath=.husky/` 是相对路径,git 在 worktree 根找 `.husky/`,但 `.husky/` 只在主仓根。worktree 里 commit 时 pre-commit/pre-push **不会触发**。
+   - 这是预期行为:worktree 内的 commit 是 agent 中间产物,质量门禁在 merge 回 master 时由架构师在主仓重跑(见 §6.6 步骤 5)
+   - 等价于:worktree 内 commit 无门禁,master 合并前架构师手动跑完整质量门禁做审计
+
+2. **node_modules 不共享**:worktree 是独立工作树,没有 node_modules。必须在 §6.3 步骤 3 跑 `pnpm --dir frontend install`
+   - 不装依赖则 `lint`/`typecheck`/`build` 全跑不起来
+
+### 6.6 合并流程(架构师执行,rebase + ff merge)
+
+```
+# 1. 确认 agent 已完成,进入主仓
+cd <Lyra主仓>
+git checkout master
+
+# 2. rebase agent 分支到 master 最新
+git rebase master agent/<任务名>
+
+# 3a. 若 rebase 无冲突 → 切回 master,ff merge
+git checkout master
+git merge --ff-only agent/<任务名>
+
+# 3b. 若 rebase 冲突 → 架构师仲裁(见下方"冲突处理")
+
+# 4. 清理 worktree + 分支(合并成功后立即执行)
+git worktree remove ../Lyra-worktrees/<任务名>
+git branch -d agent/<任务名>
+
+# 5. 在主仓跑完整质量门禁(merge 后的 master)
+pnpm --dir frontend run lint
+pnpm --dir frontend run typecheck
+```
+
+冲突处理(架构师仲裁,agent 不自解):
+- **轻冲突**(注释/格式/import 顺序):架构师手动 `git rebase --continue` 解,继续 merge
+- **重冲突**(逻辑互斥/同函数不同改法):`git rebase --abort`,退回让 agent 在新 worktree 基于最新 master 重做
+- 原则:agent 不碰冲突文件——避免 agent 静默覆盖另一个 agent 的改动
+
+### 6.7 多 worktree 状态查询
+
+```
+git worktree list        # 查看所有 worktree + 当前 HEAD
+git worktree prune       # 清理已删目录但元数据残留的 worktree
+```
+
+- 任何时刻 `git worktree list` 的输出 = 正在进行的并行任务清单
+- 废弃 worktree(目录已删但未 remove)一眼可见,prune 可清
+
+### 6.8 与串行模式的关系
+
+- §1-§5 的串行工作流是默认模式,适用于绝大多数任务
+- §6 多 agent 并行是可选增强:仅当有多个无依赖任务且开 worktree 的成本划算时启用
+- 并行模式下,每个 agent 仍遵循 §3.4 输出格式 + §4 审计流程
+- 并行模式的审计点:**rebase 成功后** + **ff merge 前**——架构师在主仓审计 agent 分支 rebase 后的最终 diff(`git diff master...agent/<任务名>`)
+- 多个 agent 串行合入:若 A、B 两个 agent 同时完成,先合 A(rebase A → ff merge → 清理),再合 B(rebase B → 此时 B 基于 A 合入前的 master,rebase 会把 A 的改动叠上 → ff merge → 清理)

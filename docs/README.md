@@ -18,7 +18,7 @@
 ### Engineering
 - [`engineering/README.md`](./engineering/README.md) — engineering 层导航
 - `engineering/governance/` — 治理文档
-  - [`AI协作模式规范.md`](./engineering/governance/AI协作模式规范.md) — agent 角色分工、提示词 9 段结构、输出格式强制
+  - [`AI协作模式规范.md`](./engineering/governance/AI协作模式规范.md) — agent 角色分工、提示词 9 段结构、输出格式强制、§6 多 agent 并行(worktree + rebase)
   - [`代码审计规则.md`](./engineering/governance/代码审计规则.md) — 审计分级(P0/P1/P2)、强制规则、交付模板
 
 ## 新文档写入规则
