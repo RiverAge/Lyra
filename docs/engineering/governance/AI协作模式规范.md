@@ -72,6 +72,7 @@
    - 必须运行的命令(Python 侧:`ruff check`、`mypy`、`pytest`;前端侧:`pnpm run lint`、`pnpm run typecheck`)
    - 关键断言:什么行为必须恢复、什么行为不能破坏
    - 如果有 guard/lint/CI,也要要求执行
+   - 测试同步要求:新模块必带测试、bugfix 必带回归测试(见 `代码审计规则.md` §3.7 硬规则 5-9)
 
 9. 输出要求
    - 修复了什么
