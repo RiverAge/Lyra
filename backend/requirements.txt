@@ -1,0 +1,7 @@
+# Lyra backend — 运行依赖
+# 本里程碑 (M1 backend skeleton) 只列实际用到的包。
+# 后续里程碑按需追加 mutagen/watchdog/aiosqlite/httpx/pycryptodome。
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic-settings>=2.7.0

@@ -1,0 +1,32 @@
+# Lyra backend — 工具配置 (ruff / mypy)
+# 统一放 pyproject.toml，避免独立配置文件散落。
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (import 排序)
+    "UP",  # pyupgrade (现代化语法)
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# 允许无类型第三方库（M1 还没引 mutagen 等，但先放开）
+ignore_missing_imports = true
+# 模块搜索路径
+mypy_path = "$MYPY_CONFIG_FILE_DIR/.."
+# 检查无类型标注的函数体
+check_untyped_defs = true

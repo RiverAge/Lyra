@@ -1,0 +1,8 @@
+# Lyra backend — 开发/检查依赖
+# ruff: lint + import 排序
+# mypy: 类型检查
+# pytest: 测试（后续里程碑补测试时用）
+
+ruff>=0.11.0
+mypy>=1.14.0
+pytest>=8.0.0
