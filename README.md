@@ -8,11 +8,12 @@
 
 ## 技术栈
 
-- 后端：Go（单二进制）
+- 后端：Python + FastAPI（uvicorn）
 - 前端：Vue3 + TS + Vite + Tailwind + pnpm
-- 标签读写：[tunetag](https://github.com/cabbagekobe/tunetag)（纯 Go，原生支持 iTunes freeform atom）
-- 文件监听：fsnotify
+- 标签读写：[mutagen](https://github.com/quodlibet/mutagen)（生产级，通吃 m4a/flac/mp3 全格式）
+- 文件监听：[watchdog](https://github.com/gorakhargosh/watchdog)（debounce，参照 Navidrome `WatcherWait=5s`）
 - 索引：SQLite
+- 迁移：Alembic
 - 部署：Docker（TrueNAS，bind mount ZFS）
 
 ## 目录结构
@@ -21,9 +22,9 @@
 Lyra/
 ├── docs/            # 需求规格与设计文档
 ├── frontend/        # Vue3 前端
-├── cmd/lyra/        # Go 后端入口
-├── internal/        # Go 业务逻辑
-└── go.mod
+├── backend/         # FastAPI 后端
+├── scripts/         # quality-gate 等工程脚本
+└── .husky/          # git hooks（pre-commit / pre-push）
 ```
 
 ## 范围

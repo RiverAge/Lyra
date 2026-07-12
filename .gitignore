@@ -1,12 +1,13 @@
-# Go
-*.exe
-*.dll
-*.so
-*.dylib
-/bin/
-/dist/
-*.test
-*.out
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Frontend
 frontend/node_modules/
@@ -21,4 +22,3 @@ frontend/.vite/
 
 # Local config / secrets
 *.local
-.env
