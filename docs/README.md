@@ -20,6 +20,8 @@
 - `engineering/governance/` — 治理文档
   - [`AI协作模式规范.md`](./engineering/governance/AI协作模式规范.md) — agent 角色分工、提示词 9 段结构、输出格式强制、§6 多 agent 并行(worktree + rebase)
   - [`代码审计规则.md`](./engineering/governance/代码审计规则.md) — 审计分级(P0/P1/P2)、强制规则、交付模板
+- `engineering/frontend/` — 前端规范
+  - [`设计系统.md`](./engineering/frontend/设计系统.md) — 设计 token、亮暗双主题、标准动画集+性能约束、组件视觉规范
 
 ## 新文档写入规则
 
