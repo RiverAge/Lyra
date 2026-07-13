@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,13 +45,35 @@ def _should_ignore(path: Path) -> bool:
     """
     # 检查路径的每个部分
     for part in path.parts:
-        if part.startswith("."):
-            return True
-        # 仅对目录名检查忽略列表（文件自身名不需要检查 $RECYCLE.BIN 等）
-        # 但任何 parent 如果匹配也应忽略
-        if part in _IGNORED_DIR_NAMES:
+        if _should_ignore_path_part(part):
             return True
     return False
+
+
+def _should_ignore_path_part(name: str) -> bool:
+    """判断单个路径组成部分是否应被忽略（用在 os.walk dirnames 就地过滤）。"""
+    if name.startswith("."):
+        return True
+    if name in _IGNORED_DIR_NAMES:
+        return True
+    return False
+
+
+def _normalize_tag_values(raw_values: list[object]) -> list[str]:
+    """将 mutagen tag 值列表转为字符串列表。
+
+    处理 bytes（UTF-8 解码）、MP4FreeForm、及其他标量类型。
+    """
+    result: list[str] = []
+    for v in raw_values:
+        if isinstance(v, bytes):
+            try:
+                result.append(v.decode("utf-8", errors="replace"))
+            except Exception:
+                result.append(repr(v))
+        else:
+            result.append(str(v))
+    return result
 
 
 def _is_audio_file(path: Path) -> bool:
@@ -134,29 +157,34 @@ def _read_audio_tags(file_path: Path) -> dict[str, object] | None:
 
     if isinstance(mf, MP4):
         for key in mf:
-            str_values: list[str] = []
-            for v in mf[key]:
-                if isinstance(v, bytes):
-                    try:
-                        str_values.append(v.decode("utf-8", errors="replace"))
-                    except Exception:
-                        str_values.append(repr(v))
-                else:
-                    str_values.append(str(v))
-            raw_tags[key] = str_values
+            raw_values = mf[key]
+            # 健壮处理标量值（cpil bool / tmpo int / pgap int 等）——
+            # mutagen 对非列表 tag 直接存标量，for 循环迭代会抛 TypeError
+            if not isinstance(raw_values, list):
+                raw_values = [raw_values]
+            raw_tags[key] = _normalize_tag_values(raw_values)
     elif isinstance(mf, FLAC):
         for key in mf:
             raw_tags[key] = [str(v) for v in mf[key]]
     elif isinstance(mf, MP3):
         for key in mf:
             values = mf[key]
-            if key.startswith("TXXX:"):
-                desc = getattr(values, "desc", "")
-                raw_tags[key] = [f"{desc}: {values}"]
-            elif hasattr(values, "text"):
-                t = values.text
-                raw_tags[key] = list(t) if isinstance(t, list) else [str(t)]
-            else:
+            try:
+                # 大多数 ID3 帧都是 list[Frame]，也有单个 Frame 的情况
+                items = values if isinstance(values, list) else [values]
+                raw_strs: list[str] = []
+                for item in items:
+                    # 优先取 .text（TIT2/TPE1/TALB 等标准文本帧）
+                    text = getattr(item, "text", None)
+                    if text is not None:
+                        if isinstance(text, list):
+                            raw_strs.extend(str(t) for t in text)
+                        else:
+                            raw_strs.append(str(text))
+                    else:
+                        raw_strs.append(str(item))
+                raw_tags[key] = raw_strs
+            except Exception:
                 raw_tags[key] = [str(values)]
 
     # ---- 提取常用字段 ----
@@ -346,9 +374,12 @@ class Scanner:
     async def scan_all(self) -> dict[str, int]:
         """全量扫描入口。
 
-        遍历音乐库根下所有子目录，逐个 scan_folder。
-        完成后做删除检测。
+        递归遍历音乐库根下整棵目录树，对每个含音频文件的叶子目录
+        逐个 scan_folder。完成后做删除检测。
         进度通过 on_progress 回调 + scanner_status 表推送。
+
+        folder_count 口径：本次全量扫描中实际调用了 scan_folder 的目录数
+        （即含音频文件且未被 hash 跳过的叶子目录数）。
 
         Returns:
             {"files_processed": N, "files_deleted": D, "folders_processed": F}
@@ -369,14 +400,36 @@ class Scanner:
         last_error: str | None = None
 
         try:
-            for entry in sorted(self._library_root.iterdir(), key=lambda e: e.name):
-                if not entry.is_dir():
-                    continue
-                if _should_ignore(entry):
+            # 递归收集所有含音频文件的叶子目录（走 os.walk 遍历整棵树）
+            candidate_dirs: list[Path] = []
+            for dirpath_str, dirnames, filenames in os.walk(self._library_root):
+                dirpath = Path(dirpath_str)
+
+                # 忽略规则：从 dirnames 就地移除要跳过的目录（os.walk 不会进入它们）
+                dirnames[:] = [
+                    d for d in dirnames if not _should_ignore_path_part(d)
+                ]
+
+                # 忽略当前目录自身（如根下 .hidden 目录会被 dirnames 过滤，但
+                # 若根自身含 dot 前缀，也需要跳过）
+                if _should_ignore(dirpath):
                     continue
 
+                # 检查该目录是否包含音频文件
+                has_audio = any(
+                    not entry.is_dir() and _is_audio_file(entry)
+                    for entry in dirpath.iterdir()
+                    if not _should_ignore(entry)
+                )
+                if has_audio:
+                    candidate_dirs.append(dirpath)
+
+            # 按路径排序，确保扫描顺序确定
+            candidate_dirs.sort(key=lambda p: str(p))
+
+            for folder in candidate_dirs:
                 try:
-                    files_done = await self.scan_folder(entry)
+                    files_done = await self.scan_folder(folder)
                     total_files += files_done
                     total_folders += 1
 
@@ -391,8 +444,8 @@ class Scanner:
                         await self._on_progress(total_files, total_folders)
 
                 except Exception:
-                    logger.exception("扫描目录失败: %s", entry)
-                    last_error = f"扫描目录失败: {entry}"
+                    logger.exception("扫描目录失败: %s", folder)
+                    last_error = f"扫描目录失败: {folder}"
 
             # 删除检测
             deleted = await self._detect_deletions()

@@ -1,9 +1,11 @@
 """测试——scanner + store 扩展（upsert, scanner_status, folder_watermarks）。
 
 覆盖 upsert 幂等、folder hash 跳过未变、mtime 过滤、
-scanner_status 落库+读取、删除检测、忽略规则。
+scanner_status 落库+读取、删除检测、忽略规则，
+以及 A2 P1 回归：scan_all 递归遍历多层目录、_read_audio_tags 对标量 MP4 key 不崩溃。
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -376,3 +378,219 @@ async def test_mtime_filtering_changed(store: IndexStore) -> None:
     assert row["mtime"] == 1750000000999
     assert row["size"] == 2000
     assert row["duration"] == 240000
+
+
+# ============================================================================
+# A2 P1 回归：scan_all 递归遍历多层目录
+# ============================================================================
+
+
+async def test_scan_all_recursive_multi_level(
+    store: IndexStore, tmp_path: Path
+) -> None:
+    """scan_all 递归遍历多层目录（apple/Artist/Album/），文件入库。
+
+    模拟标准库布局：apple/Artist/Album/01 Song.m4a（3-4 层深度），
+    验证 scan_all 能发现并扫描深层叶子目录中的音频文件。
+    测试用真实音频文件拷贝（Navidrome test fixture 含 cpil=True、
+    完整 freeform、标准 tag，能同时触发 P1-1 和 P1-2）。
+    """
+    from backend.index.scanner import Scanner
+
+    # 构造多层目录结构
+    apple_dir = tmp_path / "apple" / "Test Artist" / "Test Album"
+    apple_dir.mkdir(parents=True)
+
+    # 复制真实 MP4 fixture（含 cpil=True —— P1-2 的标量 key）
+    src = Path(
+        "C:/Users/Mercury/Desktop/src/media/navidrome/tests/fixtures/test.m4a"
+    )
+    if src.exists():
+        dst = apple_dir / "01 Test Song.m4a"
+        shutil.copy2(src, dst)
+    else:
+        # 若 fixture 不可用，退回到构造 mock（见 docstring 末尾说明）
+        from mutagen.mp4 import MP4
+
+        dst = apple_dir / "01 Test Song.m4a"
+        # 写入一个最小 m4a skeleton 再通过 mutagen 设 tag
+        # MP4 不能凭空 save，必须现有文件；构造一个简单有效的 ftyp+moov
+
+        _make_minimal_m4a(str(dst))
+        tags = MP4(str(dst))
+        tags["©nam"] = ["Mock Title"]
+        tags["©ART"] = ["Mock Artist"]
+        tags["©alb"] = ["Mock Album"]
+        tags["cpil"] = True  # 标量 key —— 这是 P1-2 的关键
+        tags.save()
+
+    scanner = Scanner(store, tmp_path)
+    result = await scanner.scan_all()
+
+    assert result["files_processed"] > 0, (
+        f"scan_all should find audio files in multi-level dirs, "
+        f"got {result}"
+    )
+    assert result["folders_processed"] > 0
+
+    # 验证文件确实入库
+    count = await store.count_tracks()
+    assert count > 0
+
+    # 验证入库记录的 tag_map 包含 cpil（证明 _read_audio_tags 未崩溃）
+    rows = await store.list_tracks(limit=10, offset=0)
+    assert len(rows) > 0
+    tag_map_str = rows[0]["tag_map"]
+    assert "cpil" in tag_map_str, (
+        f"tag_map should contain 'cpil' key (P1-2 regression), "
+        f"got: {tag_map_str[:200]}"
+    )
+
+
+async def test_scan_all_ignores_dot_dirs_recursively(
+    store: IndexStore, tmp_path: Path
+) -> None:
+    """递归 scan_all 时 .hidden 目录下的文件不被扫描。"""
+    from backend.index.scanner import Scanner
+
+    normal_dir = tmp_path / "normal_album"
+    normal_dir.mkdir()
+    hidden_dir = tmp_path / ".hidden_album"
+    hidden_dir.mkdir()
+
+    # 复制同一个 fixture 到两个目录
+    src = Path(
+        "C:/Users/Mercury/Desktop/src/media/navidrome/tests/fixtures/test.m4a"
+    )
+    if src.exists():
+        shutil.copy2(src, normal_dir / "normal.m4a")
+        shutil.copy2(src, hidden_dir / "hidden.m4a")
+
+    scanner = Scanner(store, tmp_path)
+    result = await scanner.scan_all()
+
+    # 只有 normal 目录的文件入库
+    assert result["files_processed"] >= 1
+    rows = await store.list_tracks(limit=20, offset=0)
+    paths = [r["path"] for r in rows]
+    assert any("normal_album" in p for p in paths)
+    assert not any(".hidden_album" in p for p in paths), (
+        f"Hidden dir files should NOT be indexed, got: {paths}"
+    )
+
+
+def _make_minimal_m4a(path: str) -> None:
+    """构造最小有效的 MP4 文件骨架（仅 ftyp + moov，无媒体数据）。
+
+    用于 mock 测试：提供一个 mutagen MP4 可以打开并写 tag 的文件。
+    """
+    import struct
+
+    def _atom(typ: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", 8 + len(data)) + typ + data
+
+    ftyp = _atom(b"ftyp", b"M4A \x00\x00\x00\x00M4A mp42isom")
+    # moov 最小骨架：mvhd + trak(空)
+    mvhd_data = b""
+    mvhd_data += b"\x00\x00\x00\x00"  # version+flags
+    mvhd_data += b"\x00\x00\x00\x00"  # creation time
+    mvhd_data += b"\x00\x00\x00\x00"  # modification time
+    mvhd_data += b"\x00\x00\x03\xe8"  # timescale = 1000
+    mvhd_data += b"\x00\x00\x00\x00"  # duration
+    mvhd_data += b"\x00\x00\x00\x00"  # rate
+    mvhd_data += b"\x01\x00"          # volume
+    mvhd_data += b"\x00" * 10          # reserved (10 bytes)
+    mvhd_data += b"\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"  # matrix (36 bytes)
+    mvhd_data += b"\x00" * 24          # pre-defined (24 bytes)
+    mvhd_data += b"\x00\x00\x00\x02"  # next track id
+    mvhd = _atom(b"mvhd", mvhd_data)
+    trak = _atom(b"trak", b"")  # 空 trak
+    moov = _atom(b"moov", mvhd + trak)
+
+    with open(path, "wb") as f:
+        f.write(ftyp + moov)
+
+
+# ============================================================================
+# A2 P1 回归：_read_audio_tags 对标量 MP4 key + MP3 帧健壮
+# ============================================================================
+
+
+async def test_read_audio_tags_mp4_scalar_cpil(store: IndexStore, tmp_path: Path) -> None:
+    """_read_audio_tags 对 MP4 cpil(bool) 标量不崩溃，正确序列化入库。
+
+    用真实 Navidrome fixture（含 cpil=True），验证：
+    1. 函数不抛 TypeError
+    2. tag_map JSON 含 "cpil"
+    """
+    from backend.index.scanner import _read_audio_tags
+
+    src = Path(
+        "C:/Users/Mercury/Desktop/src/media/navidrome/tests/fixtures/test.m4a"
+    )
+    if not src.exists():
+        # 退回到构造 mock MP4（见 docstring）
+        dst = tmp_path / "mock_scalar.m4a"
+        _make_minimal_m4a(str(dst))
+        from mutagen.mp4 import MP4
+
+        mf = MP4(str(dst))
+        mf["©nam"] = ["Mock"]
+        mf["cpil"] = True  # 标量
+        mf.save()
+        src = dst
+
+    result = _read_audio_tags(src)
+
+    assert result is not None, "_read_audio_tags should not return None for valid MP4"
+    tag_map_str: str = result["tag_map"]  # type: ignore[assignment]
+    assert "cpil" in tag_map_str, (
+        f"tag_map should contain 'cpil' even though it's a scalar bool, "
+        f"got: {tag_map_str[:300]}"
+    )
+    # 验证不崩溃的关键：cpil 的值被正确转为字符串
+    assert "True" in tag_map_str or "true" in tag_map_str
+
+
+async def test_read_audio_tags_mp3_txxx_clean_text(store: IndexStore, tmp_path: Path) -> None:
+    """_read_audio_tags 对 MP3 TXXX 帧返回干净文本，不存对象 repr。
+
+    复制真实 MP3 fixture，写入已知内容的 TXXX 帧，验证 text 被提取而非 repr。
+    使用真实 MP3 文件确保 mutagen 能正确识别格式，仅 TXXX 内容为测试构造。
+    """
+    from mutagen.id3 import ID3, TXXX
+
+    from backend.index.scanner import _read_audio_tags
+
+    # 复制真实 MP3 fixture
+    src = Path(
+        "C:/Users/Mercury/Desktop/src/media/navidrome/tests/fixtures"
+        "/01 Invisible (RED) Edit Version.mp3"
+    )
+    dst = tmp_path / "test_txxx.mp3"
+    if src.exists():
+        shutil.copy2(src, dst)
+    else:
+        # 若 fixture 不可用，构造最小有效 MP3（ID3v2 头 + MPEG 同步帧）
+        with open(dst, "wb") as f:
+            f.write(b"ID3\x03\x00\x00\x00\x00\x00\x00")
+            f.write(b"\xff\xfb\x90\x00" + b"\x00" * 417)
+
+    # 写已知内容的 TXXX 帧
+    tags = ID3(str(dst))
+    tags.add(TXXX(encoding=3, desc="TestKey", text=["Value1", "Value2"]))
+    tags.save()
+
+    result = _read_audio_tags(dst)
+
+    assert result is not None, "_read_audio_tags should not return None for valid MP3"
+    tag_map_str: str = result["tag_map"]  # type: ignore[assignment]
+    # 应该包含干净的 text 值，而非对象 repr（如 <TXXX...>）
+    assert "Value1" in tag_map_str, (
+        f"tag_map should contain clean TXXX text 'Value1', got: {tag_map_str[:300]}"
+    )
+    assert "Value2" in tag_map_str
+    # 不应该含对象 repr
+    assert "<TXXX" not in tag_map_str, (
+        f"tag_map should NOT contain raw repr, got: {tag_map_str[:300]}"
+    )
