@@ -38,8 +38,9 @@ logger = logging.getLogger(__name__)
 # role_map.toml 路径：Lyra/data/role_map.toml
 _ROLE_MAP_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "role_map.toml"
 
-# CF Worker 代理地址（默认），可通过 LYRA_CREDITS_BASE_URL 环境变量覆盖
-_DEFAULT_CREDITS_BASE_URL = "https://music.587626.xyz"
+# Credits 直连官方域名（非代理，非敏感）。
+# Web UI 未配置 credits_base_url 时用此地址直连——可能因 geo 重定向拿不到目标区数据。
+_APPLE_DIRECT_URL = "https://music.apple.com"
 
 # 串行 region fallback 候选表（O5 简化：去掉 WrapperManager 动态区）
 _DEFAULT_FALLBACK_REGIONS = ["us", "jp", "gb", "kr", "tw", "de", "fr", "au", "cn"]
@@ -122,13 +123,22 @@ def _resolve_role_map_path() -> Path:
     return _ROLE_MAP_FILE
 
 
-def _resolve_base_url() -> str:
-    """解析 credits 爬取用的根地址。
+async def _resolve_base_url_from_store() -> str:
+    """从 SQLite app_settings 读 credits_base_url，空值直连 music.apple.com。
 
-    优先级：LYRA_CREDITS_BASE_URL 环境变量 > 默认 CF Worker 代理。
+    优先级：app_settings.credits_base_url > 直连官方域名。
+    store 未初始化或首次启动未写入时，降级直连（不抛异常）。
     """
-    env = os.environ.get("LYRA_CREDITS_BASE_URL", "").strip()
-    return env if env else _DEFAULT_CREDITS_BASE_URL
+    from backend.index.store import get_store
+
+    store = get_store()
+    if store is None:
+        return _APPLE_DIRECT_URL
+    row = await store.get_app_settings()
+    if row is None:
+        return _APPLE_DIRECT_URL
+    val = row["credits_base_url"]
+    return val if val else _APPLE_DIRECT_URL
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +296,11 @@ async def fetch_credits(
         - _NO_CREDITS_SENTINEL: 永久无 credits
         - None: 全 region 失败
     """
-    resolved_base = base_url or _resolve_base_url()
+    # base_url 参数作测试 seam；未传时从 SQLite 读 Web UI 配置（空值直连）
+    if base_url is not None:
+        resolved_base = base_url
+    else:
+        resolved_base = await _resolve_base_url_from_store()
     should_close = client is None
     if client is None:
         client = httpx.AsyncClient(timeout=15.0)

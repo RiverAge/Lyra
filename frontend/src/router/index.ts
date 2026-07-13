@@ -27,6 +27,11 @@ const router = createRouter({
       component: () => import("@/views/LibraryView.vue"),
     },
     {
+      path: "/settings",
+      name: "settings",
+      component: () => import("@/views/SettingsView.vue"),
+    },
+    {
       path: "/track/:id",
       name: "track-detail",
       component: () => import("@/views/TrackDetailView.vue"),

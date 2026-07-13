@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from backend.index.store import IndexStore, set_store
 from backend.server.library_routes import library_router
 from backend.server.scanner_routes import scanner_router
+from backend.server.settings_routes import settings_router
 
 # ---------------------------------------------------------------------------
 # FastAPI app fixtures
@@ -27,6 +28,7 @@ def app() -> FastAPI:
     app = FastAPI()
     app.include_router(library_router, prefix="/api")
     app.include_router(scanner_router, prefix="/api")
+    app.include_router(settings_router, prefix="/api")
     return app
 
 

@@ -66,6 +66,14 @@ CREATE TABLE IF NOT EXISTS folder_watermarks (
     folder_hash TEXT    NOT NULL,
     updated_at  INTEGER NOT NULL DEFAULT 0
 );
+
+-- app_settings: Web UI 可配置的运行期设置（单行表，id=1）
+-- 加列时改 DDL（CREATE TABLE IF NOT EXISTS 对已存在表不重建，需 ALTER 或迁移）
+CREATE TABLE IF NOT EXISTS app_settings (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    credits_base_url TEXT    NOT NULL DEFAULT '',  -- 空=直连 music.apple.com
+    updated_at       INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -320,6 +328,51 @@ class IndexStore:
                 "VALUES (?, ?, ?) ON CONFLICT(folder_path) DO UPDATE SET "
                 "folder_hash = excluded.folder_hash, updated_at = excluded.updated_at",
                 (folder_path, folder_hash, now_ms),
+            )
+            await db.commit()
+
+    # ---- app_settings ----
+
+    async def get_app_settings(self) -> sqlite3.Row | None:
+        """读取 app_settings 单行。
+
+        Returns:
+            sqlite3.Row 或 None（首次启动尚未写入时——调用方应回退默认值）。
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute("SELECT * FROM app_settings WHERE id = 1")
+            return await cursor.fetchone()
+
+    async def set_app_settings(self, **fields: object) -> None:
+        """写入/更新 app_settings 单行（upsert on id=1）。
+
+        仅更新提供的列，其余保持原值。自动刷新 updated_at。
+        """
+        await self._ensure_app_settings_row()
+
+        set_parts: list[str] = []
+        values: list[object] = []
+        for col, val in fields.items():
+            set_parts.append(f"{col} = ?")
+            values.append(val)
+
+        # 自动更新 updated_at
+        now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        set_parts.append("updated_at = ?")
+        values.append(now_ms)
+
+        sql = f"UPDATE app_settings SET {', '.join(set_parts)} WHERE id = 1"
+
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(sql, values)
+            await db.commit()
+
+    async def _ensure_app_settings_row(self) -> None:
+        """确保 app_settings 表有 id=1 的行（INSERT OR IGNORE）。"""
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO app_settings (id) VALUES (1)"
             )
             await db.commit()
 

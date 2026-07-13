@@ -32,6 +32,7 @@ from backend.server.lyrics_sidecar_routes import lyrics_sidecar_router
 from backend.server.meta_routes import meta_router
 from backend.server.routes import router as api_router
 from backend.server.scanner_routes import scanner_router
+from backend.server.settings_routes import settings_router
 from backend.server.static_routes import router as static_router
 
 # 模块级 logger
@@ -237,6 +238,7 @@ app.include_router(apple_router, prefix="/api")
 app.include_router(lyrics_match_router, prefix="/api")
 app.include_router(lyrics_sidecar_router, prefix="/api")
 app.include_router(editor_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # 静态产物 + SPA fallback（生产态）

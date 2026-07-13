@@ -24,8 +24,8 @@ services:
       LYRA_MUSIC_LIBRARY_ROOT: /music
       # SQLite 持久化（named volume lyra-data 挂到 /data）
       LYRA_DB_PATH: /data/lyra.db
-      # Credits 爬取代理（CF Worker，可改）
-      LYRA_CREDITS_BASE_URL: ${LYRA_CREDITS_BASE_URL:-https://music.587626.xyz}
+      # credits_base_url 已迁移到 Web UI 配置（SQLite app_settings 表）
+      # 部署后访问 /settings 页配置代理地址；留空直连 music.apple.com
       # static_dir / role_map 由镜像内 ENV 固定，不用改
     volumes:
       # ⚠️ 改左侧宿主路径为你的 TrueNAS 音乐库实际路径
