@@ -1,0 +1,2636 @@
+# Apple Music 制作人员角色映射表
+# ================================
+# 维护方式：遇到 "缺失角色: xxx" 时，在对应分类下追加一个 [[role]] 块。
+# target_tag 留空 ("") = 不归到 navidrome 标准标签（仅进 performer 聚合）。
+# display = 英文显示名，写入 m4a 的 performer 聚合串。
+#
+# 补全原则（重要）：
+#   多语言对应关系必须来自实爬对照（同一首歌多区域返回同一人），
+#   不得凭语言知识直译片假名/韩文。target_tag 归类需人/agent 判断。
+#   每个 [[role]] 块上方的 `# 实爬对照:` 简注记录对照人名+song_id，
+#   完整跨区证据（各区域原始 roleName 表 + target_tag 判断依据）见
+#   docs/role_map-evidence.md。每次补 key 时在该文档追加一节。
+#   修改本文件无需重启程序：get_role_map() 按 mtime 惰性重读，改完即生效。
+#
+# 格式：
+#   [[role]]
+#   key = "Bass"          # roleName（英文区/中文区/日文区/韩文区各自一个 key）
+#   display = "Bass"
+#   target_tag = ""       # 空=None；可选值见 src/credits.py 的 ITUNES_CREDIT_TAGS
+#                         # (composer/lyricist/producer/mixer/engineer/remixer/
+#                         #  arranger/conductor/djmixer/performer)
+# --- 英文 roleName（英文区域 MY/US/GB 等返回的 roleNames 为英文）---
+# 对应中文键已存在，此处补充英文键以覆盖英文区域歌曲。
+# 修改时务必与 tools/am_credits_update.py 的说明保持一致（见下方同步规则）。
+[[role]]
+key = "Composer"
+display = "Composer"
+target_tag = "composer"
+
+[[role]]
+key = "Performer"
+display = "Performer"
+target_tag = ""
+
+[[role]]
+key = "Arranger"
+display = "Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "Songwriter"
+display = "Songwriter"
+target_tag = "composer"
+
+[[role]]
+key = "Lyrics"
+display = "Lyrics"
+target_tag = "lyricist"
+
+[[role]]
+key = "Vocals"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "Vocais"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "Composição"
+display = "Composição"
+target_tag = "composer"
+
+[[role]]
+key = "Letra"
+display = "Letra"
+target_tag = "lyricist"
+
+[[role]]
+key = "Producer"
+display = "Producer"
+target_tag = "producer"
+
+[[role]]
+key = "Composition"
+display = "Composition"
+target_tag = "composer"
+
+# 以下英文键由跨区域实爬验证（同一首歌在 US/JP/KR 区域返回同一人，
+# 对应已有中文/日文键的英文形式）。Apple Music 的 'Bass' 在英文区
+# 同时覆盖「人声男低音」与「低音吉他/贝斯乐器」，此处沿用已有
+# '男低音' 的口径映射为 (None, 'Bass')，与中文区一致。
+[[role]]
+key = "Background Vocals"
+display = "Background Vocals"
+target_tag = ""
+
+[[role]]
+key = "Acoustic Guitar"
+display = "Acoustic Guitar"
+target_tag = ""
+
+[[role]]
+key = "Electric Guitar"
+display = "Electric Guitar"
+target_tag = ""
+
+[[role]]
+key = "Bass"
+display = "Bass"
+target_tag = ""
+
+[[role]]
+key = "Programming"
+display = "Programming"
+target_tag = ""
+
+[[role]]
+key = "Cello"
+display = "Cello"
+target_tag = ""
+
+[[role]]
+key = "Guitar"
+display = "Guitar"
+target_tag = ""
+
+[[role]]
+key = "Violin"
+display = "Violin"
+target_tag = ""
+
+[[role]]
+key = "作者"
+display = "Writer"
+target_tag = "composer"
+
+[[role]]
+key = "音樂創作人"
+display = "Music Creator"
+target_tag = "composer"
+
+[[role]]
+key = "词曲作者"
+display = "Songwriter"
+target_tag = "composer"
+
+# 实爬对照: Richard Stilgoe(1843488715): DE=Songwriter:in / CN=词曲作者(已映射 composer)
+[[role]]
+key = "Songwriter:in"
+display = "Songwriter"
+target_tag = "composer"
+
+[[role]]
+key = "詞曲創作"
+display = "Songwriting"
+target_tag = "composer"
+
+[[role]]
+key = "ソングライター"
+display = "Songwriter"
+target_tag = "composer"
+
+[[role]]
+key = "作曲家"
+display = "Composer"
+target_tag = "composer"
+
+# 实爬对照: Andrew Lloyd Webber(1843488715): DE=Komponist:in / CN=作曲家(已映射 composer)
+[[role]]
+key = "Komponist:in"
+display = "Composer"
+target_tag = "composer"
+
+[[role]]
+key = "作曲者"
+display = "Composer"
+target_tag = "composer"
+
+[[role]]
+key = "作曲"
+display = "Composer"
+target_tag = "composer"
+
+[[role]]
+key = "작곡가"
+display = "Composer"
+target_tag = "composer"
+
+[[role]]
+key = "联合作曲"
+display = "Co-Composer"
+target_tag = "composer"
+
+[[role]]
+key = "作词"
+display = "Lyricist"
+target_tag = "lyricist"
+
+# 实爬对照: Charles Hart(1843488715): DE=Texte / CN=作词(已映射 lyricist)
+[[role]]
+key = "Texte"
+display = "Lyrics"
+target_tag = "lyricist"
+
+[[role]]
+key = "填詞"
+display = "Lyricist"
+target_tag = "lyricist"
+
+[[role]]
+key = "作詞"
+display = "Lyricist"
+target_tag = "lyricist"
+
+[[role]]
+key = "가사"
+display = "Lyricist"
+target_tag = "lyricist"
+
+[[role]]
+key = "歌詞"
+display = "Lyrics"
+target_tag = "lyricist"
+
+[[role]]
+key = "词作者"
+display = "Librettist"
+target_tag = "lyricist"
+
+# 实爬对照: Richard Stilgoe(1843488715): DE=Zusätzliche Liedtexte / CN=附加歌词(本批次新补,lyricist)
+[[role]]
+key = "Zusätzliche Liedtexte"
+display = "Additional Lyrics"
+target_tag = "lyricist"
+
+# 实爬对照: Andrew Lloyd Webber(1843488715): DE=Librettist:in / CN=词作者(已映射 lyricist)
+[[role]]
+key = "Librettist:in"
+display = "Librettist"
+target_tag = "lyricist"
+
+# 实爬对照: Richard Stilgoe & Andrew Lloyd Webber(1843485880): CN=图书 / US=Book; 音乐剧剧本(book/libretto),归 lyricist 同"词作者"族
+[[role]]
+key = "图书"
+display = "Book"
+target_tag = "lyricist"
+
+# 实爬对照: Richard Stilgoe(1843485880): CN=附加歌词 / US=Additional Lyrics; 归 lyricist 同"词作者"族
+[[role]]
+key = "附加歌词"
+display = "Additional Lyrics"
+target_tag = "lyricist"
+
+[[role]]
+key = "制作人"
+display = "Producer"
+target_tag = "producer"
+
+# 实爬对照: Andrew Lloyd Webber(1843488715): DE=Produzent:in / CN=制作人(已映射 producer)
+[[role]]
+key = "Produzent:in"
+display = "Producer"
+target_tag = "producer"
+
+[[role]]
+key = "製作人"
+display = "Producer"
+target_tag = "producer"
+
+[[role]]
+key = "プロデューサー"
+display = "Producer"
+target_tag = "producer"
+
+[[role]]
+key = "프로듀서"
+display = "Producer"
+target_tag = "producer"
+
+[[role]]
+key = "副制作人"
+display = "Co-Producer"
+target_tag = "producer"
+
+[[role]]
+key = "联席制作人"
+display = "Co-Producer"
+target_tag = "producer"
+
+[[role]]
+key = "联合制作人"
+display = "Co-Producer"
+target_tag = "producer"
+
+[[role]]
+key = "其他制作人"
+display = "Additional Producer"
+target_tag = "producer"
+
+[[role]]
+key = "助理制作人"
+display = "Assistant Producer"
+target_tag = "producer"
+
+[[role]]
+key = "声乐制作人"
+display = "Vocal Producer"
+target_tag = "producer"
+
+[[role]]
+key = "原声制作人"
+display = "Original Producer"
+target_tag = "producer"
+
+[[role]]
+key = "电影制作人"
+display = "Film Producer"
+target_tag = "producer"
+
+[[role]]
+key = "监制"
+display = "Executive Producer"
+target_tag = "producer"
+
+[[role]]
+key = "監製"
+display = "Executive Producer"
+target_tag = "producer"
+
+[[role]]
+key = "监制人"
+display = "Executive Producer"
+target_tag = "producer"
+
+[[role]]
+key = "下属监制"
+display = "Executive Producer"
+target_tag = "producer"
+
+[[role]]
+key = "声音轨道制作人"
+display = "Soundtrack Producer"
+target_tag = "producer"
+
+[[role]]
+key = "音乐主管"
+display = "Music Supervisor"
+target_tag = "producer"
+
+[[role]]
+key = "音乐总监"
+display = "Music Director"
+target_tag = "producer"
+
+[[role]]
+key = "混音师"
+display = "Remixer"
+target_tag = "remixer"
+
+[[role]]
+key = "混音師"
+display = "Remixer"
+target_tag = "remixer"
+
+[[role]]
+key = "混录制作人"
+display = "Remix Producer"
+target_tag = "remixer"
+
+[[role]]
+key = "混音工程师"
+display = "Mixing Engineer"
+target_tag = "mixer"
+
+# 实爬对照: Frank Peterson: KR=믹싱 엔지니어 / US=Mixing Engineer / CN=混音工程师(已映射 mixer)
+[[role]]
+key = "믹싱 엔지니어"
+display = "Mixing Engineer"
+target_tag = "mixer"
+
+[[role]]
+key = "混音工程師"
+display = "Mixing Engineer"
+target_tag = "mixer"
+
+[[role]]
+key = "Mixing Engineer"
+display = "Mixing Engineer"
+target_tag = "mixer"
+
+[[role]]
+key = "沉浸式混音工程师"
+display = "Immersive Mixing Engineer"
+target_tag = "mixer"
+
+[[role]]
+key = "声乐混音工程师"
+display = "Vocal Mixing Engineer"
+target_tag = "mixer"
+
+[[role]]
+key = "录音工程师"
+display = "Recording Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "錄音工程師"
+display = "Recording Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "Recording Engineer"
+display = "Recording Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "錄音師"
+display = "Recording Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "レコーディングエンジニア"
+display = "Recording Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "工程师"
+display = "Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Martin Levan(1843488715): DE=Ingenieur:in / CN=工程师(已映射 engineer)
+[[role]]
+key = "Ingenieur:in"
+display = "Engineer"
+target_tag = "engineer"
+
+# 实爬对照: John Kurlander(1843481549): JP=エンジニア / CN=工程师(已映射 engineer)
+[[role]]
+key = "エンジニア"
+display = "Engineer"
+target_tag = "engineer"
+
+# 实爬对照: John Kurlander(1843481549): TW=工程師 / CN=工程师(已映射 engineer)
+[[role]]
+key = "工程師"
+display = "Engineer"
+target_tag = "engineer"
+
+# 实爬对照: John Kurlander(1843481549): US=Engineer / CN=工程师(已映射 engineer)
+[[role]]
+key = "Engineer"
+display = "Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Carsten Heusmann: KR=엔지니어 / US=Engineer / CN=工程师(已映射 engineer)
+[[role]]
+key = "엔지니어"
+display = "Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "编辑工程师"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Dennis Preiss: KR=편집 엔지니어 / US=Editing Engineer / CN=编辑工程师(已映射 engineer)
+[[role]]
+key = "편집 엔지니어"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "編輯工程師"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "Editing Engineer"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "剪辑工程师"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "剪輯師"
+display = "Editing Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "后期制作工程师"
+display = "Post Production Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "母带工程师"
+display = "Mastering Engineer"
+target_tag = ""
+
+# 实爬对照: Bob Ludwig: KR=마스터링 엔지니어 / US=Mastering Engineer / CN=母带工程师(已映射)
+[[role]]
+key = "마스터링 엔지니어"
+display = "Mastering Engineer"
+target_tag = ""
+
+[[role]]
+key = "沉浸式母带工程师"
+display = "Immersive Mastering Engineer"
+target_tag = ""
+
+[[role]]
+key = "指挥"
+display = "Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Michael Reed(1843488715): DE=Dirigent:in / CN=指挥(已映射 conductor)
+[[role]]
+key = "Dirigent:in"
+display = "Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Lorin Maazel(1843481549): JP=指揮者 / CN=指挥(已映射 conductor)
+[[role]]
+key = "指揮者"
+display = "Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Lorin Maazel(1843481549): TW=指揮 / CN=指挥(已映射 conductor)
+[[role]]
+key = "指揮"
+display = "Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Lorin Maazel(1843481549): US=Conductor / CN=指挥(已映射 conductor)
+[[role]]
+key = "Conductor"
+display = "Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Paul Bateman: KR=지휘자 / US=Conductor / CN=指挥(已映射 conductor)
+[[role]]
+key = "지휘자"
+display = "Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "管弦乐队指挥"
+display = "Orchestra Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "合唱指挥"
+display = "Chorus Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "合唱团指挥"
+display = "Choir Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Martin Neary(1843481549): JP=合唱団指揮者 / CN=合唱团指挥(已映射 conductor)
+[[role]]
+key = "合唱団指揮者"
+display = "Choir Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Martin Neary(1843481549): TW=合唱團指揮 / CN=合唱团指挥(已映射 conductor)
+[[role]]
+key = "合唱團指揮"
+display = "Choir Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Martin Neary(1843481549): US=Choir Conductor / CN=合唱团指挥(已映射 conductor)
+[[role]]
+key = "Choir Conductor"
+display = "Choir Conductor"
+target_tag = "conductor"
+
+# 实爬对照: Martin Neary(1843481549): DE=Chordirigent:in / CN=合唱团指挥(已映射 conductor)
+[[role]]
+key = "Chordirigent:in"
+display = "Choir Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "弦乐指挥"
+display = "String Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "助理指挥"
+display = "Assistant Conductor"
+target_tag = "conductor"
+
+[[role]]
+key = "编曲"
+display = "Arranger"
+target_tag = "arranger"
+
+# 实爬对照: Dante Alighieri(724483042): CN=改编自 / US=Based on the Work of; 作品来源归属非编曲, 不归 arranger, 仅 performer 聚合
+[[role]]
+key = "改编自"
+display = "Based on the Work of"
+target_tag = ""
+
+[[role]]
+key = "編曲"
+display = "Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "アレンジャー"
+display = "Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "편곡자"
+display = "Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "改编"
+display = "Arranger"
+target_tag = "arranger"
+
+# 实爬对照: Frank Peterson: KR=각색가 / US=Adapter(与 편곡자=Arranger 区分; Adapter 归 arranger 与改编同性质)
+[[role]]
+key = "각색가"
+display = "Adapter"
+target_tag = "arranger"
+
+[[role]]
+key = "联合编曲"
+display = "Co-Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "键盘乐器编曲"
+display = "Keyboard Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "合唱团编曲"
+display = "Choir Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "歌舞团编曲"
+display = "Chorus Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "编曲（传统）"
+display = "Arranger (Traditional)"
+target_tag = "arranger"
+
+[[role]]
+key = "声乐编曲"
+display = "Vocal Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "管弦乐编排"
+display = "Orchestrator"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843488715): DE=Orchestrator:in / CN=管弦乐编排(已映射 arranger)
+[[role]]
+key = "Orchestrator:in"
+display = "Orchestrator"
+target_tag = "arranger"
+
+# 实爬对照: Paul Bateman: KR=오케스트레이터 / US=Orchestrator / CN=管弦乐编排(已映射 arranger)
+[[role]]
+key = "오케스트레이터"
+display = "Orchestrator"
+target_tag = "arranger"
+
+[[role]]
+key = "弦乐编曲"
+display = "String Arranger"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843488715): DE=Streicher-Arrangeur:in / CN=弦乐编曲(已映射 arranger)
+[[role]]
+key = "Streicher-Arrangeur:in"
+display = "String Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "打击乐编曲"
+display = "Percussion Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "圆号编曲"
+display = "Horn Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "铜管乐编曲"
+display = "Brass Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "铜管乐编排"
+display = "Brass Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "小号编曲"
+display = "Trumpet Arranger"
+target_tag = "arranger"
+
+[[role]]
+key = "声乐改编"
+display = "Vocal Adapter"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843481549): JP=ボーカルアダプタ / CN=声乐改编(已映射 arranger)
+[[role]]
+key = "ボーカルアダプタ"
+display = "Vocal Adapter"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843481549): TW=聲樂改編 / CN=声乐改编(已映射 arranger)
+[[role]]
+key = "聲樂改編"
+display = "Vocal Adapter"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843481549): US=Vocal Adapter / CN=声乐改编(已映射 arranger)
+[[role]]
+key = "Vocal Adapter"
+display = "Vocal Adapter"
+target_tag = "arranger"
+
+# 实爬对照: Andrew Lloyd Webber(1843481549): DE=Adaptierer:in für Gesangsaufnahmen / CN=声乐改编(已映射 arranger)
+[[role]]
+key = "Adaptierer:in für Gesangsaufnahmen"
+display = "Vocal Adapter"
+target_tag = "arranger"
+
+[[role]]
+key = "乐谱准备"
+display = "Score Preparation"
+target_tag = "arranger"
+
+[[role]]
+key = "乐谱制作人"
+display = "Sheet Music Producer"
+target_tag = ""
+
+[[role]]
+key = "编剧"
+display = "Screenwriter"
+target_tag = "arranger"
+
+[[role]]
+key = "DJ"
+display = "DJ"
+target_tag = "djmixer"
+
+[[role]]
+key = "录音主管"
+display = "Recording Supervisor"
+target_tag = ""
+
+[[role]]
+key = "音效设计"
+display = "Sound Design"
+target_tag = ""
+
+[[role]]
+key = "音频修复"
+display = "Audio Restoration"
+target_tag = ""
+
+[[role]]
+key = "音频技术人员"
+display = "Audio Technician"
+target_tag = ""
+
+[[role]]
+key = "录音技术人员"
+display = "Recording Technician"
+target_tag = ""
+
+[[role]]
+key = "录音室工作人员"
+display = "Studio Personnel"
+target_tag = ""
+
+[[role]]
+key = "现场录制工程师"
+display = "Live Recording Engineer"
+target_tag = ""
+
+[[role]]
+key = "助理混音工程师"
+display = "Assistant Mixing Engineer"
+target_tag = ""
+
+[[role]]
+key = "助理录音工程师"
+display = "Assistant Recording Engineer"
+target_tag = ""
+
+[[role]]
+key = "助理工程师"
+display = "Assistant Engineer"
+target_tag = ""
+
+# 实爬对照: Martin Levan(1843481549): JP=アシスタントエンジニア / CN=助理工程师(已映射,空;按英文族归 engineer)
+[[role]]
+key = "アシスタントエンジニア"
+display = "Assistant Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Martin Levan(1843481549): TW=助理工程師 / CN=助理工程师(已映射,空;按英文族归 engineer)
+[[role]]
+key = "助理工程師"
+display = "Assistant Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Martin Levan(1843481549): US=Assistant Engineer / CN=助理工程师(已映射,空;按英文族归 engineer)
+[[role]]
+key = "Assistant Engineer"
+display = "Assistant Engineer"
+target_tag = "engineer"
+
+# 实爬对照: Martin Levan(1843481549): DE=Ingenieurassistent:in / CN=助理工程师(已映射,空;按英文族归 engineer)
+[[role]]
+key = "Ingenieurassistent:in"
+display = "Assistant Engineer"
+target_tag = "engineer"
+
+[[role]]
+key = "助理剪辑工程师"
+display = "Assistant Editing Engineer"
+target_tag = ""
+
+[[role]]
+key = "助理母带工程师"
+display = "Assistant Mastering Engineer"
+target_tag = ""
+
+[[role]]
+key = "助理弦乐工程师"
+display = "Assistant Strings Engineer"
+target_tag = ""
+
+[[role]]
+key = "声乐录制工程师"
+display = "Vocal Recording Engineer"
+target_tag = ""
+
+[[role]]
+key = "加录工程师"
+display = "Overdub Engineer"
+target_tag = ""
+
+[[role]]
+key = "弦乐工程师"
+display = "Strings Engineer"
+target_tag = ""
+
+[[role]]
+key = "其他工程师"
+display = "Additional Engineer"
+target_tag = ""
+
+[[role]]
+key = "设备技术人员"
+display = "Equipment Technician"
+target_tag = ""
+
+[[role]]
+key = "鼓乐技术人员"
+display = "Drum Technician"
+target_tag = ""
+
+[[role]]
+key = "低音技术人员"
+display = "Bass Technician"
+target_tag = ""
+
+[[role]]
+key = "吉他技术人员"
+display = "Guitar Technician"
+target_tag = ""
+
+[[role]]
+key = "磁带操作员"
+display = "Tape Operator"
+target_tag = ""
+
+[[role]]
+key = "管弦乐队经理"
+display = "Orchestra Manager"
+target_tag = ""
+
+[[role]]
+key = "抄写员"
+display = "Copyist"
+target_tag = ""
+
+[[role]]
+key = "表演者"
+display = "Performer"
+target_tag = ""
+
+[[role]]
+key = "演出者"
+display = "Performer"
+target_tag = ""
+
+[[role]]
+key = "パフォーマー"
+display = "Performer"
+target_tag = ""
+
+[[role]]
+key = "歌唱家"
+display = "Singer"
+target_tag = ""
+
+[[role]]
+key = "演唱"
+display = "Singer"
+target_tag = ""
+
+[[role]]
+key = "声乐"
+display = "Vocals"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman(1843488715): DE=Stimme und Gesang / CN=声乐(已映射)
+[[role]]
+key = "Stimme und Gesang"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "ボーカル"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "バックグラウンドボーカル"
+display = "Background Vocals"
+target_tag = ""
+
+[[role]]
+key = "보컬"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "声部"
+display = "Vocals"
+target_tag = ""
+
+[[role]]
+key = "主唱"
+display = "Lead Vocals"
+target_tag = ""
+
+[[role]]
+key = "领唱"
+display = "Lead Vocals"
+target_tag = ""
+
+[[role]]
+key = "伴唱"
+display = "Background Vocals"
+target_tag = ""
+
+# 实爬对照: Reda Bdir(723540513): CN=奈伊笛 / US=Ney; 乐器类惯例 target_tag 空
+[[role]]
+key = "奈伊笛"
+display = "Ney"
+target_tag = ""
+
+[[role]]
+key = "背景人聲"
+display = "Background Vocals"
+target_tag = ""
+
+[[role]]
+key = "백그라운드 보컬"
+display = "Background Vocals"
+target_tag = ""
+
+[[role]]
+key = "和声"
+display = "Harmony Vocals"
+target_tag = ""
+
+[[role]]
+key = "团体和声"
+display = "Gang Vocals"
+target_tag = ""
+
+[[role]]
+key = "第二人声"
+display = "Second Vocals"
+target_tag = ""
+
+[[role]]
+key = "童声"
+display = "Children’s Vocals"
+target_tag = ""
+
+[[role]]
+key = "其他声乐"
+display = "Additional Vocals"
+target_tag = ""
+
+[[role]]
+key = "说唱"
+display = "Rap"
+target_tag = ""
+
+[[role]]
+key = "女高音"
+display = "Soprano"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman(1843481549): JP=ソプラノ / US=Soprano(已映射)
+[[role]]
+key = "ソプラノ"
+display = "Soprano"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman(1843481549): US=Soprano / CN=女高音(已映射)
+[[role]]
+key = "Soprano"
+display = "Soprano"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman(1843481549): DE=Sopran / US=Soprano(已映射)
+[[role]]
+key = "Sopran"
+display = "Soprano"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman: KR=소프라노 / US=Soprano / CN=女高音(已映射)
+[[role]]
+key = "소프라노"
+display = "Soprano"
+target_tag = ""
+
+[[role]]
+key = "女低音"
+display = "Alto"
+target_tag = ""
+
+[[role]]
+key = "男低音"
+display = "Bass"
+target_tag = ""
+
+[[role]]
+key = "男高音"
+display = "Tenor"
+target_tag = ""
+
+# 实爬对照: Paul Miles-Kingston(1843481549): JP=トレブル / US=Treble; 童声,声部族空
+[[role]]
+key = "トレブル"
+display = "Treble"
+target_tag = ""
+
+# 实爬对照: Placido Domingo(1843481549): JP=テノール / US=Tenor(已映射)
+[[role]]
+key = "テノール"
+display = "Tenor"
+target_tag = ""
+
+# 实爬对照: Paul Miles-Kingston(1843481549): TW=童聲高音 / US=Treble; 童声高音,声部族空
+[[role]]
+key = "童聲高音"
+display = "Treble"
+target_tag = ""
+
+# 实爬对照: Thomas Drew & Paul Miles-Kingston(1843481544 Requiem): CN=高音 / US=Treble; 童声高音,声部族惯例空。注:cn区把Treble译成"高音"(易与女高音混淆,实为童声Treble)
+[[role]]
+key = "高音"
+display = "Treble"
+target_tag = ""
+
+# 实爬对照: Placido Domingo(1843481549): US=Tenor / CN=男高音(已映射,声部族空)
+[[role]]
+key = "Tenor"
+display = "Tenor"
+target_tag = ""
+
+# 实爬对照: Paul Miles-Kingston(1843481549): US=Treble / CN=高音(已映射); 童声,声部族空
+[[role]]
+key = "Treble"
+display = "Treble"
+target_tag = ""
+
+# 实爬对照: Paul Miles-Kingston(1843481549): DE=Diskant / US=Treble; 童声,声部族空
+[[role]]
+key = "Diskant"
+display = "Treble"
+target_tag = ""
+
+[[role]]
+key = "バス"
+display = "Bass"
+target_tag = ""
+
+[[role]]
+key = "베이스"
+display = "Bass"
+target_tag = ""
+
+[[role]]
+key = "男中音"
+display = "Baritone"
+target_tag = ""
+
+[[role]]
+key = "MC"
+display = "MC"
+target_tag = ""
+
+[[role]]
+key = "旁白"
+display = "Narrator"
+target_tag = ""
+
+[[role]]
+key = "语音编码器"
+display = "Vocoder"
+target_tag = ""
+
+[[role]]
+key = "介绍人声"
+display = "Intro Vocals"
+target_tag = ""
+
+[[role]]
+key = "叫喊"
+display = "Shouts"
+target_tag = ""
+
+[[role]]
+key = "尖啸"
+display = "Screams"
+target_tag = ""
+
+[[role]]
+key = "人声效果"
+display = "Vocal Effects"
+target_tag = ""
+
+[[role]]
+key = "人声效果器"
+display = "Talkbox"
+target_tag = ""
+
+[[role]]
+key = "人声编排"
+display = "Vocal Programming"
+target_tag = ""
+
+[[role]]
+key = "键盘"
+display = "Keyboards"
+target_tag = ""
+
+# 实爬对照: Callum Mcleod 等(1843488715): DE=Tasteninstrumente / CN=键盘(已映射)
+[[role]]
+key = "Tasteninstrumente"
+display = "Keyboards"
+target_tag = ""
+
+# 实爬对照: Sarah Brightman: KR=건반 / US=Keyboards / CN=键盘(已映射)
+[[role]]
+key = "건반"
+display = "Keyboards"
+target_tag = ""
+
+[[role]]
+key = "键盘合成器"
+display = "Keyboard Synth"
+target_tag = ""
+
+[[role]]
+key = "钢琴"
+display = "Piano"
+target_tag = ""
+
+# 实爬对照: Jan-Eric Kohrs: KR=피아노 / US=Piano / CN=钢琴(已映射)
+[[role]]
+key = "피아노"
+display = "Piano"
+target_tag = ""
+
+[[role]]
+key = "电钢琴"
+display = "Electric Piano"
+target_tag = ""
+
+[[role]]
+key = "立式钢琴"
+display = "Upright Piano"
+target_tag = ""
+
+[[role]]
+key = "预制钢琴"
+display = "Prepared Piano"
+target_tag = ""
+
+[[role]]
+key = "罗兹钢琴"
+display = "Rhodes Piano"
+target_tag = ""
+
+[[role]]
+key = "沃利策钢琴"
+display = "Wurlitzer Piano"
+target_tag = ""
+
+[[role]]
+key = "玩具钢琴"
+display = "Toy Piano"
+target_tag = ""
+
+[[role]]
+key = "美乐特朗电子琴"
+display = "Mellotron"
+target_tag = ""
+
+[[role]]
+key = "钢片琴"
+display = "Celesta"
+target_tag = ""
+
+[[role]]
+key = "合成器"
+display = "Synthesiser"
+target_tag = ""
+
+[[role]]
+key = "合成器护垫"
+display = "Synth Pads"
+target_tag = ""
+
+[[role]]
+key = "合成器弦乐"
+display = "Synth Strings"
+target_tag = ""
+
+[[role]]
+key = "合成器贝斯"
+display = "Synth Bass"
+target_tag = ""
+
+[[role]]
+key = "低音合成器"
+display = "Bass Synthesiser"
+target_tag = ""
+
+[[role]]
+key = "模块化合成器"
+display = "Modular Synth"
+target_tag = ""
+
+[[role]]
+key = "穆格合成器"
+display = "Moog"
+target_tag = ""
+
+[[role]]
+key = "穆格"
+display = "Moog"
+target_tag = ""
+
+[[role]]
+key = "吉他合成器"
+display = "Guitar Synthesiser"
+target_tag = ""
+
+[[role]]
+key = "Synclavier 合成器"
+display = "Synclavier"
+target_tag = ""
+
+[[role]]
+key = "特雷门琴"
+display = "Theremin"
+target_tag = ""
+
+[[role]]
+key = "电子乐"
+display = "Electronics"
+target_tag = ""
+
+[[role]]
+key = "合成器编程"
+display = "Synthesiser Programming"
+target_tag = ""
+
+[[role]]
+key = "编程"
+display = "Programming"
+target_tag = ""
+
+[[role]]
+key = "プログラミング"
+display = "Programming"
+target_tag = ""
+
+[[role]]
+key = "프로그래밍"
+display = "Programming"
+target_tag = ""
+
+[[role]]
+key = "鼓乐编程"
+display = "Drum Programming"
+target_tag = ""
+
+[[role]]
+key = "鼓机"
+display = "Drum Machine"
+target_tag = ""
+
+[[role]]
+key = "采样器"
+display = "Sampler"
+target_tag = ""
+
+[[role]]
+key = "循环"
+display = "Loops"
+target_tag = ""
+
+[[role]]
+key = "管风琴"
+display = "Organ"
+target_tag = ""
+
+# 实爬对照: James Lancelot(1843481549): JP=オルガン / CN=管风琴(已映射)
+[[role]]
+key = "オルガン"
+display = "Organ"
+target_tag = ""
+
+# 实爬对照: James Lancelot(1843481549): TW=管風琴 / CN=管风琴(已映射)
+[[role]]
+key = "管風琴"
+display = "Organ"
+target_tag = ""
+
+# 实爬对照: James Lancelot(1843481549): US=Organ / CN=管风琴(已映射)
+[[role]]
+key = "Organ"
+display = "Organ"
+target_tag = ""
+
+# 实爬对照: James Lancelot(1843481549): DE=Orgel / US=Organ(已映射)
+[[role]]
+key = "Orgel"
+display = "Organ"
+target_tag = ""
+
+[[role]]
+key = "哈蒙德风琴"
+display = "Hammond Organ"
+target_tag = ""
+
+[[role]]
+key = "组合风琴"
+display = "Farfisa"
+target_tag = ""
+
+[[role]]
+key = "脚踏式风琴"
+display = "Harmonium"
+target_tag = ""
+
+[[role]]
+key = "风琴"
+display = "Pump Organ"
+target_tag = ""
+
+[[role]]
+key = "大键琴"
+display = "Harpsichord"
+target_tag = ""
+
+[[role]]
+key = "电子小键琴"
+display = "Clavinet"
+target_tag = ""
+
+[[role]]
+key = "Omnichord"
+display = "Omnichord"
+target_tag = ""
+
+[[role]]
+key = "吉他"
+display = "Guitar"
+target_tag = ""
+
+[[role]]
+key = "結他"
+display = "Guitar"
+target_tag = ""
+
+[[role]]
+key = "ギター"
+display = "Guitar"
+target_tag = ""
+
+# 韩文区同一角色（实爬验证：720468814 サンクチュアリ，古川昌義/Masayoshi Furukawa
+#   US=Guitar / JP=ギター / KR=기타 三区域一致）
+[[role]]
+key = "기타"
+display = "Guitar"
+target_tag = ""
+
+[[role]]
+key = "电吉他"
+display = "Electric Guitar"
+target_tag = ""
+
+[[role]]
+key = "エレクトリックギター"
+display = "Electric Guitar"
+target_tag = ""
+
+[[role]]
+key = "전자 기타"
+display = "Electric Guitar"
+target_tag = ""
+
+[[role]]
+key = "主音吉他"
+display = "Lead Guitar"
+target_tag = ""
+
+[[role]]
+key = "原声吉他"
+display = "Acoustic Guitar"
+target_tag = ""
+
+[[role]]
+key = "アコースティックギター"
+display = "Acoustic Guitar"
+target_tag = ""
+
+[[role]]
+key = "어쿠스틱 기타"
+display = "Acoustic Guitar"
+target_tag = ""
+
+[[role]]
+key = "古典吉他"
+display = "Classical Guitar"
+target_tag = ""
+
+[[role]]
+key = "尼龙弦吉他"
+display = "Nylon-String Guitar"
+target_tag = ""
+
+[[role]]
+key = "钢弦吉他"
+display = "Steel Guitar"
+target_tag = ""
+
+[[role]]
+key = "节奏吉他"
+display = "Rhythm Guitar"
+target_tag = ""
+
+[[role]]
+key = "原声节奏吉他"
+display = "Acoustic Rhythm Guitar"
+target_tag = ""
+
+[[role]]
+key = "12 弦吉他"
+display = "12-String Guitar"
+target_tag = ""
+
+[[role]]
+key = "12 弦原声吉他"
+display = "12-String Acoustic Guitar"
+target_tag = ""
+
+[[role]]
+key = "12 弦电吉他"
+display = "12-String Electric Guitar"
+target_tag = ""
+
+[[role]]
+key = "五弦吉他"
+display = "Requinto Guitar"
+target_tag = ""
+
+[[role]]
+key = "细弦吉他"
+display = "Hi-String Guitar"
+target_tag = ""
+
+[[role]]
+key = "滑音吉他"
+display = "Slide Guitar"
+target_tag = ""
+
+[[role]]
+key = "钢滑棒吉他"
+display = "Lap Steel Guitar"
+target_tag = ""
+
+[[role]]
+key = "踏板钢丝弦吉他"
+display = "Pedal Steel Guitar"
+target_tag = ""
+
+[[role]]
+key = "弗拉门戈吉他"
+display = "Flamenco Guitar"
+target_tag = ""
+
+[[role]]
+key = "裂音吉他"
+display = "Fuzz Guitar"
+target_tag = ""
+
+[[role]]
+key = "低音吉他"
+display = "Bass Guitar"
+target_tag = ""
+
+# 实爬对照: David Rose(1843488715): DE=Bassgitarre / CN=低音吉他(已映射)
+[[role]]
+key = "Bassgitarre"
+display = "Bass Guitar"
+target_tag = ""
+
+[[role]]
+key = "电低音吉他"
+display = "Electric Bass Guitar"
+target_tag = ""
+
+[[role]]
+key = "上低音吉他"
+display = "Baritone Guitar"
+target_tag = ""
+
+[[role]]
+key = "无品低音吉他"
+display = "Fretless Bass Guitar"
+target_tag = ""
+
+[[role]]
+key = "原声低音吉他"
+display = "Acoustic Bass Guitar"
+target_tag = ""
+
+[[role]]
+key = "倍低音吉他"
+display = "Guitarron"
+target_tag = ""
+
+[[role]]
+key = "班卓琴"
+display = "Banjo"
+target_tag = ""
+
+[[role]]
+key = "电班卓琴"
+display = "Electric Banjo"
+target_tag = ""
+
+[[role]]
+key = "6 弦班卓琴"
+display = "6-String Banjo"
+target_tag = ""
+
+[[role]]
+key = "尤克里里"
+display = "Ukulele"
+target_tag = ""
+
+[[role]]
+key = "曼陀林"
+display = "Mandolin"
+target_tag = ""
+
+[[role]]
+key = "冬不拉"
+display = "Dobro"
+target_tag = ""
+
+[[role]]
+key = "布祖基琴"
+display = "Bouzouki"
+target_tag = ""
+
+[[role]]
+key = "鲁特琴"
+display = "Lute"
+target_tag = ""
+
+[[role]]
+key = "维奥尔琴"
+display = "Viola da Gamba"
+target_tag = ""
+
+[[role]]
+key = "竖琴"
+display = "Harp"
+target_tag = ""
+
+# 实爬对照: RICHARD CARPENTER(1443918698): CN=羽管键琴 / US=Harpsichord; 键盘乐器族空
+[[role]]
+key = "羽管键琴"
+display = "Harpsichord"
+target_tag = ""
+
+# 实爬对照: Sheila Bromberg(1843488715): DE=Harfe / CN=竖琴(已映射)
+[[role]]
+key = "Harfe"
+display = "Harp"
+target_tag = ""
+
+[[role]]
+key = "自动竖琴"
+display = "Autoharp"
+target_tag = ""
+
+[[role]]
+key = "倍低音竖笛"
+display = "Contrabass Recorder"
+target_tag = ""
+
+[[role]]
+key = "西塔琴"
+display = "Sitar"
+target_tag = ""
+
+[[role]]
+key = "乌德琴"
+display = "Oud"
+target_tag = ""
+
+[[role]]
+key = "琵琶"
+display = "Pipa"
+target_tag = ""
+
+[[role]]
+key = "古筝"
+display = "Guzheng"
+target_tag = ""
+
+[[role]]
+key = "日本筝"
+display = "Koto"
+target_tag = ""
+
+[[role]]
+key = "齐特琴"
+display = "Zither"
+target_tag = ""
+
+[[role]]
+key = "扬琴"
+display = "Dulcimer"
+target_tag = ""
+
+[[role]]
+key = "二胡"
+display = "Erhu"
+target_tag = ""
+
+[[role]]
+key = "小提琴"
+display = "Violin"
+target_tag = ""
+
+# 实爬对照: Alison Kelly 等(1843488715): DE=Geige / CN=小提琴(已映射)
+[[role]]
+key = "Geige"
+display = "Violin"
+target_tag = ""
+
+[[role]]
+key = "ヴァイオリン"
+display = "Violin"
+target_tag = ""
+
+# 韩文区同一角色（实爬验证：720468312 ハレルヤ，入江茜 JP=ヴァイオリン / KR=바이올린）
+[[role]]
+key = "바이올린"
+display = "Violin"
+target_tag = ""
+
+[[role]]
+key = "第一小提琴手"
+display = "First Violin"
+target_tag = ""
+
+[[role]]
+key = "第二小提琴手"
+display = "Second Violin"
+target_tag = ""
+
+[[role]]
+key = "首席小提琴手"
+display = "Lead Violin"
+target_tag = ""
+
+[[role]]
+key = "首席"
+display = "Concertmaster"
+target_tag = ""
+
+[[role]]
+key = "中提琴"
+display = "Viola"
+target_tag = ""
+
+# 实爬对照: Alan Smyth 等(1843488715): DE=Bratsche / CN=中提琴(已映射)
+[[role]]
+key = "Bratsche"
+display = "Viola"
+target_tag = ""
+
+[[role]]
+key = "大提琴"
+display = "Cello"
+target_tag = ""
+
+[[role]]
+key = "첼로"
+display = "Cello"
+target_tag = ""
+
+[[role]]
+key = "低音提琴"
+display = "Double Bass"
+target_tag = ""
+
+# 实爬对照: Arthur Watts 等(1843488715): DE=Kontrabass / CN=低音提琴(已映射)
+[[role]]
+key = "Kontrabass"
+display = "Double Bass"
+target_tag = ""
+
+[[role]]
+key = "倍低音大提琴"
+display = "Contrabass"
+target_tag = ""
+
+[[role]]
+key = "古提琴"
+display = "Viol"
+target_tag = ""
+
+[[role]]
+key = "弦乐器"
+display = "String Instrument"
+target_tag = ""
+
+[[role]]
+key = "长笛"
+display = "Flute"
+target_tag = ""
+
+# 实爬对照: Dan Fogelberg(1423236731): CN=低音长笛 / US=Bass Flute; 乐器族空
+[[role]]
+key = "低音长笛"
+display = "Bass Flute"
+target_tag = ""
+
+# 实爬对照: Bob Messenger(1423236731): CN=中音长笛 / US=Alto Flute; 乐器族空
+[[role]]
+key = "中音长笛"
+display = "Alto Flute"
+target_tag = ""
+
+# 实爬对照: Alexa Turpin(1843488715): DE=Flöte / CN=长笛(已映射)
+[[role]]
+key = "Flöte"
+display = "Flute"
+target_tag = ""
+
+[[role]]
+key = "短笛"
+display = "Piccolo"
+target_tag = ""
+
+# 实爬对照: Alexa Turpin(1843488715): DE=Piccoloflöte / CN=短笛(已映射)
+[[role]]
+key = "Piccoloflöte"
+display = "Piccolo"
+target_tag = ""
+
+[[role]]
+key = "尺八"
+display = "Shakuhachi"
+target_tag = ""
+
+[[role]]
+key = "竹笛"
+display = "Bamboo Flute"
+target_tag = ""
+
+[[role]]
+key = "中国笛子"
+display = "Chinese Flute"
+target_tag = ""
+
+[[role]]
+key = "爱尔兰长笛"
+display = "Irish Flute"
+target_tag = ""
+
+[[role]]
+key = "竖笛"
+display = "Recorder"
+target_tag = ""
+
+[[role]]
+key = "排笛"
+display = "Pan Flute"
+target_tag = ""
+
+[[role]]
+key = "陶笛"
+display = "Ocarina"
+target_tag = ""
+
+[[role]]
+key = "口琴"
+display = "Harmonica"
+target_tag = ""
+
+[[role]]
+key = "口风琴"
+display = "Melodica"
+target_tag = ""
+
+[[role]]
+key = "萨克斯管"
+display = "Saxophone"
+target_tag = ""
+
+# 实爬对照: Chris Gradwell(1843488715): DE=Saxofon / CN=萨克斯管(已映射)
+[[role]]
+key = "Saxofon"
+display = "Saxophone"
+target_tag = ""
+
+[[role]]
+key = "巴松管"
+display = "Bassoon"
+target_tag = ""
+
+# 实爬对照: Peter Whittaker(1843488715): DE=Fagott / CN=巴松管(已映射)
+[[role]]
+key = "Fagott"
+display = "Bassoon"
+target_tag = ""
+
+[[role]]
+key = "中音萨克斯管"
+display = "Alto Saxophone"
+target_tag = ""
+
+[[role]]
+key = "次中音萨克斯管"
+display = "Tenor Saxophone"
+target_tag = ""
+
+[[role]]
+key = "上低音萨克斯管"
+display = "Baritone Saxophone"
+target_tag = ""
+
+[[role]]
+key = "单簧管"
+display = "Clarinet"
+target_tag = ""
+
+# 实爬对照: Steve Pierce(1843488715): DE=Klarinette / CN=单簧管(已映射)
+[[role]]
+key = "Klarinette"
+display = "Clarinet"
+target_tag = ""
+
+[[role]]
+key = "中音单簧管"
+display = "Alto Clarinet"
+target_tag = ""
+
+[[role]]
+key = "低音单簧管"
+display = "Bass Clarinet"
+target_tag = ""
+
+[[role]]
+key = "倍低音单簧管"
+display = "Contrabass Clarinet"
+target_tag = ""
+
+[[role]]
+key = "双簧管"
+display = "Oboe"
+target_tag = ""
+
+# 实爬对照: Keith Marshall(1843488715): DE=Oboe / CN=双簧管(已映射)
+[[role]]
+key = "Oboe"
+display = "Oboe"
+target_tag = ""
+
+[[role]]
+key = "英国管"
+display = "English Horn"
+target_tag = ""
+
+# 实爬对照: Keith Marshall(1843488715): DE=Englischhorn / CN=英国管(已映射)
+[[role]]
+key = "Englischhorn"
+display = "English Horn"
+target_tag = ""
+
+[[role]]
+key = "小号"
+display = "Trumpet"
+target_tag = ""
+
+# 实爬对照: Graham Ashton 等(1843488715): DE=Trompete / CN=小号(已映射)
+[[role]]
+key = "Trompete"
+display = "Trumpet"
+target_tag = ""
+
+[[role]]
+key = "高音小号"
+display = "Piccolo Trumpet"
+target_tag = ""
+
+[[role]]
+key = "富鲁格号"
+display = "Flügelhorn"
+target_tag = ""
+
+[[role]]
+key = "短号"
+display = "Cornet"
+target_tag = ""
+
+[[role]]
+key = "长号"
+display = "Trombone"
+target_tag = ""
+
+# 实爬对照: Richard Wall(1843488715): DE=Posaune / CN=长号(已映射)
+[[role]]
+key = "Posaune"
+display = "Trombone"
+target_tag = ""
+
+[[role]]
+key = "圆号"
+display = "Horn"
+target_tag = ""
+
+# 实爬对照: Daniel Emond 等(1843488715): DE=Horn / CN=圆号(已映射)
+[[role]]
+key = "Horn"
+display = "French Horn"
+target_tag = ""
+
+[[role]]
+key = "圆号部分"
+display = "Horn Section"
+target_tag = ""
+
+[[role]]
+key = "低音长号"
+display = "Bass Trombone"
+target_tag = ""
+
+[[role]]
+key = "次中音长号"
+display = "Tenor Trombone"
+target_tag = ""
+
+[[role]]
+key = "法国号"
+display = "French Horn"
+target_tag = ""
+
+[[role]]
+key = "美乐号"
+display = "Mellophone"
+target_tag = ""
+
+[[role]]
+key = "大号"
+display = "Tuba"
+target_tag = ""
+
+[[role]]
+key = "粗管上低音号"
+display = "Euphonium"
+target_tag = ""
+
+[[role]]
+key = "唢呐"
+display = "Suona"
+target_tag = ""
+
+[[role]]
+key = "木管"
+display = "Woodwinds"
+target_tag = ""
+
+[[role]]
+key = "北美印第安人长笛"
+display = "Native American Flute"
+target_tag = ""
+
+[[role]]
+key = "六孔哨"
+display = "Tin Whistle"
+target_tag = ""
+
+[[role]]
+key = "哨子"
+display = "Whistle"
+target_tag = ""
+
+[[role]]
+key = "电子管乐器"
+display = "EWI"
+target_tag = ""
+
+[[role]]
+key = "倍低音巴松管"
+display = "Contrabassoon"
+target_tag = ""
+
+[[role]]
+key = "鼓"
+display = "Drums"
+target_tag = ""
+
+[[role]]
+key = "Drums"
+display = "Drums"
+target_tag = ""
+
+[[role]]
+key = "打击乐"
+display = "Percussion"
+target_tag = ""
+
+# 实爬对照: Dave Locke(1843488715): DE=Perkussion/Schlagzeug / CN=打击乐(已映射)
+[[role]]
+key = "Perkussion/Schlagzeug"
+display = "Percussion"
+target_tag = ""
+
+# 实爬对照: Lukas Hilbert(723540439): CN=电西塔尔琴 / US=Electric Sitar; 乐器类惯例 target_tag 空
+[[role]]
+key = "电西塔尔琴"
+display = "Electric Sitar"
+target_tag = ""
+
+[[role]]
+key = "定音鼓"
+display = "Timpani"
+target_tag = ""
+
+[[role]]
+key = "低音鼓"
+display = "Bass Drum"
+target_tag = ""
+
+[[role]]
+key = "塔布拉鼓"
+display = "Tabla"
+target_tag = ""
+
+[[role]]
+key = "康茄鼓"
+display = "Congas"
+target_tag = ""
+
+[[role]]
+key = "宝思兰鼓"
+display = "Bodhrán Drum"
+target_tag = ""
+
+[[role]]
+key = "箱鼓"
+display = "Cajon"
+target_tag = ""
+
+[[role]]
+key = "沙锤"
+display = "Shaker"
+target_tag = ""
+
+[[role]]
+key = "砂槌"
+display = "Maracas"
+target_tag = ""
+
+[[role]]
+key = "牛铃"
+display = "Cowbell"
+target_tag = ""
+
+[[role]]
+key = "小手鼓"
+display = "Tambourine"
+target_tag = ""
+
+[[role]]
+key = "马林巴琴"
+display = "Marimba"
+target_tag = ""
+
+[[role]]
+key = "木琴"
+display = "Xylophone"
+target_tag = ""
+
+[[role]]
+key = "振动琴"
+display = "Vibraphone"
+target_tag = ""
+
+[[role]]
+key = "颤音琴"
+display = "Vibraphone"
+target_tag = ""
+
+[[role]]
+key = "钟琴"
+display = "Glockenspiel"
+target_tag = ""
+
+[[role]]
+key = "比尤埃拉琴"
+display = "Vihuela"
+target_tag = ""
+
+[[role]]
+key = "管钟"
+display = "Tubular Bells"
+target_tag = ""
+
+[[role]]
+key = "响板"
+display = "Castanets"
+target_tag = ""
+
+[[role]]
+key = "三角铁"
+display = "Triangle"
+target_tag = ""
+
+[[role]]
+key = "锣"
+display = "Gong"
+target_tag = ""
+
+[[role]]
+key = "铙钹"
+display = "Cymbals"
+target_tag = ""
+
+[[role]]
+key = "踩镲"
+display = "Hi-Hat"
+target_tag = ""
+
+[[role]]
+key = "响木"
+display = "Wood Block"
+target_tag = ""
+
+[[role]]
+key = "响弦鼓"
+display = "Snare Drum"
+target_tag = ""
+
+[[role]]
+key = "雪橇铃"
+display = "Sleigh Bells"
+target_tag = ""
+
+[[role]]
+key = "藏钵"
+display = "Tibetan Bowls"
+target_tag = ""
+
+[[role]]
+key = "拍击"
+display = "Claps"
+target_tag = ""
+
+[[role]]
+key = "拍手"
+display = "Hand Claps"
+target_tag = ""
+
+[[role]]
+key = "跺脚"
+display = "Foot Stomping"
+target_tag = ""
+
+[[role]]
+key = "弹指"
+display = "Finger Snaps"
+target_tag = ""
+
+[[role]]
+key = "节奏口技"
+display = "Beatbox"
+target_tag = ""
+
+[[role]]
+key = "刮擦"
+display = "Scratches"
+target_tag = ""
+
+[[role]]
+key = "音效"
+display = "Sound Effects"
+target_tag = ""
+
+[[role]]
+key = "唱片机"
+display = "Turntables"
+target_tag = ""
+
+[[role]]
+key = "拇指琴"
+display = "Mbira"
+target_tag = ""
+
+[[role]]
+key = "德西马琴"
+display = "Dulcimer"
+target_tag = ""
+
+[[role]]
+key = "其他打击乐器"
+display = "Other Percussion Instrument"
+target_tag = ""
+
+[[role]]
+key = "电子打击乐器"
+display = "Electronic Percussion"
+target_tag = ""
+
+[[role]]
+key = "节拍"
+display = "Beats"
+target_tag = ""
+
+[[role]]
+key = "合唱团"
+display = "Choir"
+target_tag = ""
+
+# 实爬对照: Winchester Cathedral Choir(1843481549): JP=合唱団 / CN=合唱团(已映射)
+[[role]]
+key = "合唱団"
+display = "Choir"
+target_tag = ""
+
+# 实爬对照: Winchester Cathedral Choir(1843481549): TW=合唱團 / CN=合唱团(已映射)
+[[role]]
+key = "合唱團"
+display = "Choir"
+target_tag = ""
+
+# 实爬对照: Phantom of the Opera Cast Ensemble(1843488234): CN=演职员表 / US=Cast; 演员团体,performer 聚合空
+[[role]]
+key = "演职员表"
+display = "Cast"
+target_tag = ""
+
+# 实爬对照: Winchester Cathedral Choir(1843481549): US=Choir / CN=合唱团(已映射)
+[[role]]
+key = "Choir"
+display = "Choir"
+target_tag = ""
+
+# 实爬对照: Winchester Cathedral Choir(1843481549): DE=Chor / CN=合唱团(已映射)
+[[role]]
+key = "Chor"
+display = "Choir"
+target_tag = ""
+
+# 实爬对照: Capital Voices: KR=합창단 / US=Choir / CN=合唱团(已映射)
+[[role]]
+key = "합창단"
+display = "Choir"
+target_tag = ""
+
+[[role]]
+key = "合奏团"
+display = "Ensemble"
+target_tag = ""
+
+[[role]]
+key = "儿童合唱团"
+display = "Children’s Choir"
+target_tag = ""
+
+[[role]]
+key = "女童合唱团"
+display = "Girls’ Choir"
+target_tag = ""
+
+[[role]]
+key = "声乐合奏团"
+display = "Vocal Ensemble"
+target_tag = ""
+
+# 实爬对照: The Phantom of the Opera Cast(1843488715): DE=Gesangsensemble / CN=声乐合奏团(已映射)
+[[role]]
+key = "Gesangsensemble"
+display = "Vocal Ensemble"
+target_tag = ""
+
+[[role]]
+key = "圆号合奏团"
+display = "Horn Ensemble"
+target_tag = ""
+
+[[role]]
+key = "歌舞团"
+display = "Chorus"
+target_tag = ""
+
+[[role]]
+key = "管弦乐队"
+display = "Orchestra"
+target_tag = ""
+
+# 实爬对照: Phantom Orchestra(1843488715): DE=Orchester / CN=管弦乐队(已映射)
+[[role]]
+key = "Orchester"
+display = "Orchestra"
+target_tag = ""
+
+# 实爬对照: London Symphony Orchestra: KR=오케스트라 / US=Orchestra / CN=管弦乐队(已映射)
+[[role]]
+key = "오케스트라"
+display = "Orchestra"
+target_tag = ""
+
+[[role]]
+key = "爱乐管弦乐队"
+display = "Philharmonic Orchestra"
+target_tag = ""
+
+[[role]]
+key = "交响管弦乐队"
+display = "Symphony Orchestra"
+target_tag = ""
+
+[[role]]
+key = "室内管弦乐队"
+display = "Chamber Orchestra"
+target_tag = ""
+
+# 实爬对照: English Chamber Orchestra(1843481549): JP=室内オーケストラ / CN=室内管弦乐队(已映射)
+[[role]]
+key = "室内オーケストラ"
+display = "Chamber Orchestra"
+target_tag = ""
+
+# 实爬对照: English Chamber Orchestra(1843481549): TW=室內樂團 / CN=室内管弦乐队(已映射)
+[[role]]
+key = "室內樂團"
+display = "Chamber Orchestra"
+target_tag = ""
+
+# 实爬对照: English Chamber Orchestra(1843481549): US=Chamber Orchestra / CN=室内管弦乐队(已映射)
+[[role]]
+key = "Chamber Orchestra"
+display = "Chamber Orchestra"
+target_tag = ""
+
+# 实爬对照: English Chamber Orchestra(1843481549): DE=Kammerorchester / CN=室内管弦乐队(已映射)
+[[role]]
+key = "Kammerorchester"
+display = "Chamber Orchestra"
+target_tag = ""
+
+[[role]]
+key = "弦乐合奏团"
+display = "String Ensemble"
+target_tag = ""
+
+[[role]]
+key = "弦乐管弦乐团"
+display = "String Orchestra"
+target_tag = ""
+
+[[role]]
+key = "弦乐"
+display = "Strings"
+target_tag = ""
+
+[[role]]
+key = "弦樂"
+display = "Strings"
+target_tag = ""
+
+[[role]]
+key = "Strings"
+display = "Strings"
+target_tag = ""
+
+[[role]]
+key = "铜管"
+display = "Brass"
+target_tag = ""
+
+[[role]]
+key = "铜管乐队"
+display = "Brass Band"
+target_tag = ""
+
+[[role]]
+key = "弦乐四重奏"
+display = "String Quartet"
+target_tag = ""
+
+[[role]]
+key = "弦乐八重奏"
+display = "String Octet"
+target_tag = ""
+
+[[role]]
+key = "弦乐三重奏"
+display = "String Trio"
+target_tag = ""
+
+[[role]]
+key = "木管合奏团"
+display = "Woodwind Ensemble"
+target_tag = ""
+
+[[role]]
+key = "乐器演奏家"
+display = "Instrumentalist"
+target_tag = ""
+
+[[role]]
+key = "音乐家"
+display = "Musician"
+target_tag = ""
+
+[[role]]
+key = "领队"
+display = "Leader"
+target_tag = ""
+
+# 实爬对照: Perry Montague-Mason(1843488715): DE=Leiter:in / CN=领队(已映射)
+[[role]]
+key = "Leiter:in"
+display = "Leader"
+target_tag = ""
+
+[[role]]
+key = "管弦乐队领队"
+display = "Orchestra Leader"
+target_tag = ""
+
+# 实爬对照: Perry Montague-Mason(1843488715): DE=Orchesterleiter:in / CN=管弦乐队领队(已映射)
+[[role]]
+key = "Orchesterleiter:in"
+display = "Orchestra Leader"
+target_tag = ""
+
+[[role]]
+key = "乐队领队"
+display = "Band Leader"
+target_tag = ""
+
+[[role]]
+key = "单人表演"
+display = "Solo"
+target_tag = ""
+
+[[role]]
+key = "封面插图"
+display = "Cover Art"
+target_tag = ""
+
+[[role]]
+key = "创意总监"
+display = "Creative Director"
+target_tag = ""
+
+[[role]]
+key = "平面设计"
+display = "Graphic Design"
+target_tag = ""
+
+[[role]]
+key = "摄影"
+display = "Photography"
+target_tag = ""
+
+# 实爬对照: Simon Fowler: KR=사진 / US=Photography / CN=摄影(已映射)
+[[role]]
+key = "사진"
+display = "Photography"
+target_tag = ""
+
+[[role]]
+key = "封面设计"
+display = "Cover Design"
+target_tag = ""
+
+[[role]]
+key = "合唱团总监"
+display = "Choir Director"
+target_tag = ""
+
+[[role]]
+key = "管弦乐队总监"
+display = "Orchestra Director"
+target_tag = ""
+
+[[role]]
+key = "歌舞团总监"
+display = "Chorus Director"
+target_tag = ""
+
+[[role]]
+key = "歌舞团指挥"
+display = "Chorus Conductor"
+target_tag = ""
+
+[[role]]
+key = "舞蹈演员"
+display = "Dancer"
+target_tag = ""
+
+[[role]]
+key = "电影导演"
+display = "Film Director"
+target_tag = ""
+
+[[role]]
+key = "演员"
+display = "Actor"
+target_tag = ""
+
+[[role]]
+key = "翻译"
+display = "Translation"
+target_tag = ""
+
+# 实爬对照: Lachlan McBean: KR=번역 / US=Translation / CN=翻译(已映射)
+[[role]]
+key = "번역"
+display = "Translation"
+target_tag = ""
+
+[[role]]
+key = "文本"
+display = "Text"
+target_tag = ""
+
+[[role]]
+key = "重建"
+display = "Reconstruction"
+target_tag = ""
+
+[[role]]
+key = "鸣笛"
+display = "Whistling"
+target_tag = ""
+
+[[role]]
+key = "声音表演"
+display = "Speaker"
+target_tag = ""
+
+[[role]]
+key = "朗读"
+display = "Spoken Word"
+target_tag = ""
+
+[[role]]
+key = "手风琴"
+display = "Accordion"
+target_tag = ""
+
+[[role]]
+key = "六角手风琴"
+display = "Concertina"
+target_tag = ""
+
+[[role]]
+key = "诗歌"
+display = "Poem"
+target_tag = ""
+
+[[role]]
+key = "被采样艺人"
+display = "Sampled Artist"
+target_tag = ""
+
+[[role]]
+key = "所有乐器"
+display = "All Instruments"
+target_tag = ""
+
+[[role]]
+key = "其他乐器"
+display = "Other Instrument"
+target_tag = ""
+

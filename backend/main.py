@@ -16,6 +16,8 @@ from backend.index.scanner import Scanner, set_scanner
 from backend.index.store import IndexStore, set_store
 from backend.index.watcher import Watcher
 from backend.play.stream import play_router
+from backend.server.apple_routes import apple_router
+from backend.server.credits_routes import credits_router
 from backend.server.library_routes import library_router
 from backend.server.meta_routes import meta_router
 from backend.server.routes import router as api_router
@@ -57,6 +59,8 @@ app.include_router(library_router, prefix="/api")
 app.include_router(scanner_router, prefix="/api")
 app.include_router(play_router, prefix="/api")
 app.include_router(meta_router, prefix="/api")
+app.include_router(credits_router, prefix="/api")
+app.include_router(apple_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # 模块级资源引用（shutdown 时使用）
@@ -153,6 +157,19 @@ async def on_startup() -> None:
         )
         set_scanner(None)
 
+    # -- Apple WebAPI token 预热（M4-B 新增） --
+    try:
+        from backend.meta.apple import TokenManager
+
+        tm = TokenManager.get_instance()
+        await tm.ensure_token()
+        logger.info("Apple WebAPI token pre-fetched successfully.")
+    except Exception:
+        logger.warning(
+            "Apple WebAPI token pre-fetch failed. "
+            "Will retry on first request."
+        )
+
 
 async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
     """首次启动异步全量扫描。
@@ -184,7 +201,12 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
-    """停止文件监听器。"""
+    """停止文件监听器 + 关闭 Apple WebAPI token client。
+
+    关闭 TokenManager 内部的长连接 httpx.AsyncClient（token 抓取用），
+    避免容器正常停止时连接泄漏（§3.6 状态/资源约束）。
+    close() 幂等：_client 已为 None 时直接返回。
+    """
     global _watcher, _initial_scan_task
 
     if _initial_scan_task is not None:
@@ -198,5 +220,13 @@ async def on_shutdown() -> None:
     if _watcher is not None:
         await _watcher.stop()
         _watcher = None
+
+    # Apple WebAPI token client 关闭（与 startup 预热对称）
+    try:
+        from backend.meta.apple import TokenManager
+
+        await TokenManager.get_instance().close()
+    except Exception:
+        logger.warning("Failed to close Apple WebAPI token client.", exc_info=True)
 
     logger.info("Lyra shutdown complete.")

@@ -42,6 +42,7 @@ FIELD_MAP: dict[str, tuple[str | None, str | None, str | None]] = {
     "arranger":      ("----:com.apple.iTunes:arranger",  "arranger",     "TXXX:ARRANGER"),
     "conductor":     ("----:com.apple.iTunes:conductor", "conductor",    "TXXX:CONDUCTOR"),
     "djmixer":       ("----:com.apple.iTunes:djmixer",   "djmixer",      "TXXX:DJMIXER"),
+    "performer":     ("----:com.apple.iTunes:performer", "performer",    "TXXX:PERFORMER"),
     "genre":         ("©gen",                            "genre",        "TCON"),
     "copyright":     ("cprt",                            "copyright",    None),
     "record_company":("©pub",                            "organization", "TPUB"),

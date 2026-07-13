@@ -24,7 +24,9 @@ frontend/.vite/
 *.local
 
 # Runtime data (SQLite DB 由运行时生成,不入库)
-data/
+# 例外:role_map.toml 是人工维护的角色映射资产,必须入库(credits 运行时依赖)
+data/*
+!data/role_map.toml
 
 # ZCode 工具临时目录
 .zcode/
