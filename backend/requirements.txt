@@ -1,6 +1,7 @@
 # Lyra backend — 运行依赖
 # 本里程碑 (M1 backend skeleton) 只列实际用到的包。
-# 后续里程碑按需追加 mutagen/watchdog/aiosqlite/httpx/pycryptodome。
+# M5-A 歌词匹配: cryptography (网易 weapi AES-CBC)；不引入 pycryptodome
+# （QQ 3DES 为非标准手写实现，整文件原样照搬，见 lyric_match/crypto/tripledes_qq.py）。
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
@@ -11,3 +12,4 @@ watchdog>=6.0.0
 httpx>=0.27.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
+cryptography>=42.0.0

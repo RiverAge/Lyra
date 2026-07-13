@@ -18,7 +18,10 @@ from backend.index.watcher import Watcher
 from backend.play.stream import play_router
 from backend.server.apple_routes import apple_router
 from backend.server.credits_routes import credits_router
+from backend.server.editor_routes import editor_router
 from backend.server.library_routes import library_router
+from backend.server.lyrics_match_routes import lyrics_router as lyrics_match_router
+from backend.server.lyrics_sidecar_routes import lyrics_sidecar_router
 from backend.server.meta_routes import meta_router
 from backend.server.routes import router as api_router
 from backend.server.scanner_routes import scanner_router
@@ -61,6 +64,9 @@ app.include_router(play_router, prefix="/api")
 app.include_router(meta_router, prefix="/api")
 app.include_router(credits_router, prefix="/api")
 app.include_router(apple_router, prefix="/api")
+app.include_router(lyrics_match_router, prefix="/api")
+app.include_router(lyrics_sidecar_router, prefix="/api")
+app.include_router(editor_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # 模块级资源引用（shutdown 时使用）
