@@ -61,3 +61,46 @@ async def list_library(
         "limit": limit,
         "offset": offset,
     }
+
+
+@library_router.get("/library/{track_id}")
+async def get_track(track_id: str) -> dict:
+    """单 track 详情端点。
+
+    前端 track 详情页（TrackDetailView）进入时调用，前端用字符串 ID
+    （§3.4 ID 字符串契约），此端点解析为 int 后走 store.get_track_by_id。
+
+    Args:
+        track_id: track ID（字符串形式的整数主键）。
+
+    Returns:
+        track dict（id 转回 str）。
+
+    Raises:
+        HTTPException 422: track_id 不是有效整数。
+        HTTPException 404: track 不存在。
+        HTTPException 503: 数据库未初始化。
+    """
+    store = get_store()
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not initialized",
+        )
+
+    try:
+        rowid = int(track_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid track id: {track_id!r}",
+        ) from e
+
+    row = await store.get_track_by_id(rowid)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Track {track_id} not found",
+        )
+
+    return _track_row_to_dict(dict(row))

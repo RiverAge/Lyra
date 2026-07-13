@@ -171,3 +171,81 @@ async def test_library_db_unavailable(app: FastAPI) -> None:
         body = resp.json()
         assert "detail" in body
         assert "Database not initialized" in body["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/library/{track_id} 单 track 端点
+# ---------------------------------------------------------------------------
+
+
+async def _insert_sample_track(store: IndexStore, *, path: str, rowid_offset: int = 0) -> int:
+    """插入一条样本 track 并返回其 rowid（用于断言）。"""
+    # rowid_offset 仅用于让 path 唯一（避免 UNIQUE 冲突）
+    return await store.insert_track(
+        title="Test Song",
+        artist="Test Artist",
+        album_artist="Test Album Artist",
+        album="Test Album",
+        path=path,
+        track=1,
+        disc=1,
+        year=2024,
+        duration=240000,
+        bitrate=256000,
+        codec="alac",
+        samplerate=44100,
+        tag_map='{"©nam":"Test Song"}',
+        mtime=1750000000000,
+        size=25000000,
+        has_cover=1,
+        created_at=1750000000000,
+        updated_at=1750000000000 + rowid_offset,
+    )
+
+
+async def test_get_track_by_id_ok(store: IndexStore, client: AsyncClient) -> None:
+    """GET /api/library/{id} 命中存在 track，返回完整字段且 id 为 str。"""
+    rowid = await _insert_sample_track(
+        store,
+        path="/music/apple/Artist/Album/01 Test.m4a",
+    )
+
+    resp = await client.get(f"/api/library/{rowid}")
+    assert resp.status_code == 200
+    item = resp.json()
+
+    assert isinstance(item["id"], str)
+    assert item["id"] == str(rowid)
+    assert item["title"] == "Test Song"
+    assert item["artist"] == "Test Artist"
+    assert item["album"] == "Test Album"
+    assert item["path"] == "/music/apple/Artist/Album/01 Test.m4a"
+    assert item["duration"] == 240000
+    assert item["codec"] == "alac"
+
+
+async def test_get_track_by_id_not_found(client: AsyncClient) -> None:
+    """GET /api/library/{id} 不存在 → 404。"""
+    resp = await client.get("/api/library/999999")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert "not found" in body["detail"].lower()
+
+
+async def test_get_track_by_id_invalid_id(client: AsyncClient) -> None:
+    """GET /api/library/{id} 非整数 id → 422。"""
+    resp = await client.get("/api/library/abc")
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "invalid" in body["detail"].lower()
+
+
+async def test_get_track_db_unavailable(app: FastAPI) -> None:
+    """数据库未初始化时 GET /api/library/{id} 返回 503。"""
+    set_store(None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        resp = await c.get("/api/library/1")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert "Database not initialized" in body["detail"]

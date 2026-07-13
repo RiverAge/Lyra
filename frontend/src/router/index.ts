@@ -1,11 +1,13 @@
 import { createRouter, createWebHistory } from "vue-router"
 
 /**
- * Lyra 路由（占位）
+ * Lyra 路由
  *
  * 职责：
- * - 提供基础路由壳，为后续业务页面挂载留位
- * - 当前仅保留占位路由，业务路由后续按需扩展
+ * - /         → 重定向到 /library（曲库为主入口）
+ * - /library  → 曲库分页列表（LibraryView）
+ * - /track/:id                 → track 详情页壳（TrackDetailView）
+ * - /track/:id/lyrics-editor   → 逐字歌词编辑器（LyricsEditorView）
  *
  * 约束：
  * - 模式使用 createWebHistory（Vite dev server 支持 history fallback）
@@ -17,10 +19,28 @@ const router = createRouter({
   routes: [
     {
       path: "/",
-      name: "home",
-      component: () => import("@/views/HomeView.vue"),
+      redirect: "/library",
     },
-    // 占位：后续业务路由在此扩展（如 /library、/diff、/lyrics、/editor）
+    {
+      path: "/library",
+      name: "library",
+      component: () => import("@/views/LibraryView.vue"),
+    },
+    {
+      path: "/track/:id",
+      name: "track-detail",
+      component: () => import("@/views/TrackDetailView.vue"),
+    },
+    {
+      path: "/track/:id/lyrics-editor",
+      name: "lyrics-editor",
+      component: () => import("@/views/LyricsEditorView.vue"),
+    },
+    // 兜底：未匹配路由回到曲库
+    {
+      path: "/:pathMatch(.*)*",
+      redirect: "/library",
+    },
   ],
 })
 

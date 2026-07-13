@@ -20,6 +20,9 @@ importers:
       vue-router:
         specifier: ^4.5.0
         version: 4.6.4(vue@3.5.39(typescript@5.9.3))
+      wavesurfer.js:
+        specifier: ^7.12.10
+        version: 7.12.10
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.2.3
@@ -1667,6 +1670,9 @@ packages:
       typescript:
         optional: true
 
+  wavesurfer.js@7.12.10:
+    resolution: {integrity: sha512-M3AC5biFmvfy7Oxe8FN6I88H0z1c8Vuz81N6Oq2CY4kOumNDb6U1/0qg4pomjP619vJqdWADlgUcpOKvfGifng==}
+
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
@@ -3170,6 +3176,8 @@ snapshots:
       '@vue/shared': 3.5.39
     optionalDependencies:
       typescript: 5.9.3
+
+  wavesurfer.js@7.12.10: {}
 
   webpack-virtual-modules@0.6.2: {}
 
