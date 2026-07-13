@@ -22,3 +22,9 @@ frontend/.vite/
 
 # Local config / secrets
 *.local
+
+# Runtime data (SQLite DB 由运行时生成,不入库)
+data/
+
+# ZCode 工具临时目录
+.zcode/
