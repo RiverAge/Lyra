@@ -23,9 +23,11 @@ frontend/.vite/
 # Local config / secrets
 *.local
 
-# AGENTS.md 是给本地 agent 开发用的内部指引（含本机路径/部署细节），
-# 不入公开仓库。本地保留副本供 agent 参考。
+# AGENTS.md / AGENTS.base.md 是给本地 agent 开发用的内部指引
+# （含本机路径/部署细节/跨项目引用），不入公开仓库。
+# 本地保留副本供 agent 参考。
 AGENTS.md
+AGENTS.base.md
 
 # Runtime data (SQLite DB 由运行时生成,不入库)
 # 例外:role_map.toml 是人工维护的角色映射资产,必须入库(credits 运行时依赖)
