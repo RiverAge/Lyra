@@ -7,41 +7,14 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from backend.index.store import IndexStore, set_store
-from backend.server.library_routes import library_router
 
 # 所有测试都需要 async 支持
 pytestmark = pytest.mark.asyncio
 
 
 # ---------------------------------------------------------------------------
-# fixtures
+# fixtures（test_library 特有；共享 fixtures 在 conftest.py）
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def app() -> FastAPI:
-    """创建只含 library_router 的最小 FastAPI app。
-
-    与生产一致：/api 前缀挂载 library_router。
-    无 startup event，由各测试手动 set_store()。
-    """
-    app = FastAPI()
-    app.include_router(library_router, prefix="/api")
-    return app
-
-
-@pytest.fixture
-async def store(tmp_path: object) -> AsyncGenerator[IndexStore, None]:
-    """在临时目录创建已初始化的 IndexStore。
-
-    teardown 时清空模块级单例，防测试间泄漏。
-    """
-    db_path = tmp_path / "test.db"  # type: ignore[operator]
-    store = IndexStore(db_path)  # type: ignore[arg-type]
-    await store.init_schema()
-    set_store(store)
-    yield store
-    set_store(None)
 
 
 @pytest.fixture
