@@ -145,6 +145,23 @@ class IndexStore:
             )
             return await cursor.fetchone()
 
+    async def get_track_by_id(self, rowid: int) -> sqlite3.Row | None:
+        """按 rowid 查询单条 track。
+
+        Args:
+            rowid: 行 ID（自增主键）。
+
+        Returns:
+            sqlite3.Row 或 None（不存在时）。
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute(
+                "SELECT * FROM tracks WHERE id = ?",
+                (rowid,),
+            )
+            return await cursor.fetchone()
+
     async def get_all_paths(self) -> list[str]:
         """获取所有已索引的路径（删除检测用）。"""
         async with aiosqlite.connect(self._db_path) as db:

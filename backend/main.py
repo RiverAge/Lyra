@@ -15,6 +15,7 @@ from backend.index.progress import ScannerProgress, set_progress
 from backend.index.scanner import Scanner, set_scanner
 from backend.index.store import IndexStore, set_store
 from backend.index.watcher import Watcher
+from backend.play.stream import play_router
 from backend.server.library_routes import library_router
 from backend.server.routes import router as api_router
 from backend.server.scanner_routes import scanner_router
@@ -53,6 +54,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 app.include_router(library_router, prefix="/api")
 app.include_router(scanner_router, prefix="/api")
+app.include_router(play_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # 模块级资源引用（shutdown 时使用）
