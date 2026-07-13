@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     部署时通过 LYRA_DB_PATH 环境变量覆盖（如 /data/lyra.db）。
     """
 
+    static_dir: str | None = None
+    """前端静态产物目录（Vite build 产物）。
+
+    None = 不 serve 静态文件（本机开发态，前端走 vite dev server）。
+    生产容器内为 /app/static（Dockerfile COPY dist → /app/static）。
+    配置后 main.py 会 mount /assets + 注册 SPA fallback 路由。
+    """
+
     def music_library_path(self) -> Path | None:
         """将配置字符串转为 pathlib.Path。
 

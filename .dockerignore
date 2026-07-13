@@ -1,0 +1,49 @@
+# Build context 排除清单
+# 与 .gitignore 规则对齐 + Docker 构建专用排除
+
+# 版本控制
+.git/
+.gitignore
+.github/
+
+# Python 缓存与虚拟环境
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 前端依赖与产物（CI 内重新 install + build，不拷进 context）
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 本机开发态临时与本地配置
+.env
+*.local
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 运行期数据（SQLite db 运行期生成，由 named volume 托管）
+# role_map.toml 是入库资产，必须 COPY 进镜像——这里不排除 data/role_map.toml
+data/*
+!data/role_map.toml
+
+# ZCode 工具临时目录
+.zcode/
+
+# 文档（运行期不需要）
+docs/
+
+# 脚本（quality-gate 等开发工具，运行期不需要）
+scripts/
+
+# 其他可能的开发产物
+*.log
+cmd/
+internal/

@@ -1,0 +1,59 @@
+name: build-and-push
+
+# 触发条件：
+# - push tag v* → 构建并推 GHCR（主路径）
+# - workflow_dispatch → 手动触发兜底（Actions UI 点 Run workflow）
+# 不跑 quality-gate（由本地推 tag 前自验，M7 决策）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # GHCR push 权限（GITHUB_TOKEN 内置，无需配 secret）
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # Actions 内置 token，无需配 secret
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          # 仓库名小写化（GHCR 要求镜像名全小写）
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${REPO_LC}" >> "$GITHUB_OUTPUT"
+          # tag 名（v0.1.0）或手动触发时的 sha 短前缀
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # 三标签：:latest（最新）/ :<tag名>（版本）/ :<sha>（精确可回滚）
+          tags: |
+            ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+          # GHA cache 加速增量构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

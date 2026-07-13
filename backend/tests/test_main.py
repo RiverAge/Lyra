@@ -1,11 +1,13 @@
-"""测试——main.py 生命周期事件。
+"""测试——main.py lifespan shutdown 资源清理。
 
-P1-2 覆盖：on_shutdown 调用 TokenManager.get_instance().close()，
-关闭 token 抓取用的长连接 httpx.AsyncClient，避免容器停止时连接泄漏。
+迁移自原 on_shutdown 测试：lifespan 的 shutdown 段抽成 _run_shutdown 函数，
+测试直接调用它，验证：
+1. cancel initial_scan_task
+2. stop watcher
+3. close TokenManager httpx client
 
-只测 on_shutdown 的资源关闭行为，不测 on_startup（on_startup 依赖
-config/store/scanner/watcher 全链路，已在 test_scanner/test_library 间接覆盖，
-单独测需要大量 mock，scope 过大）。
+不跑 lifespan startup 段（startup 依赖 config/store/scanner/watcher 全链路，
+已在 test_scanner/test_library 间接覆盖，单独测需大量 mock）。
 """
 
 from __future__ import annotations
@@ -13,22 +15,21 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from backend import main
 
+pytestmark = pytest.mark.asyncio
 
-class TestOnShutdown:
-    """on_shutdown 资源清理测试。"""
 
-    async def test_on_shutdown_closes_token_manager(self) -> None:
-        """on_shutdown 调用 TokenManager.get_instance().close()。
+class TestRunShutdown:
+    """_run_shutdown 资源清理测试（等价迁移自 TestOnShutdown）。"""
 
-        P1-2 修复点：原 main.py 无 on_shutdown 调 close()，
-        容器正常停止时 httpx.AsyncClient 长连接泄漏。
+    async def test_shutdown_closes_token_manager(self) -> None:
+        """shutdown 调用 TokenManager.get_instance().close()。
+
+        容器正常停止时 httpx.AsyncClient 长连接必须关闭，防泄漏。
         """
-        # 确保模块级 _watcher / _initial_scan_task 为 None（无副作用）
-        main._watcher = None  # type: ignore[attr-defined]
-        main._initial_scan_task = None  # type: ignore[attr-defined]
-
         mock_tm = MagicMock()
         mock_tm.close = AsyncMock()
 
@@ -36,12 +37,12 @@ class TestOnShutdown:
             "backend.meta.apple.TokenManager.get_instance",
             return_value=mock_tm,
         ):
-            await main.on_shutdown()
+            await main._run_shutdown(watcher=None, initial_scan_task=None)
 
         mock_tm.close.assert_awaited_once()
 
-    async def test_on_shutdown_cancels_initial_scan_task(self) -> None:
-        """on_shutdown 取消 _initial_scan_task（已存在的清理行为，不应回归）。"""
+    async def test_shutdown_cancels_initial_scan_task(self) -> None:
+        """shutdown 取消 initial_scan_task（已存在的清理行为，不应回归）。"""
 
         async def _hang_forever() -> None:
             try:
@@ -50,8 +51,6 @@ class TestOnShutdown:
                 raise
 
         task = asyncio.create_task(_hang_forever())
-        main._initial_scan_task = task  # type: ignore[attr-defined]
-        main._watcher = None  # type: ignore[attr-defined]
 
         mock_tm = MagicMock()
         mock_tm.close = AsyncMock()
@@ -60,21 +59,15 @@ class TestOnShutdown:
             "backend.meta.apple.TokenManager.get_instance",
             return_value=mock_tm,
         ):
-            await main.on_shutdown()
+            await main._run_shutdown(watcher=None, initial_scan_task=task)
 
         assert task.cancelled() or task.done()
-        # 任务被清理后模块级引用置空
-        assert main._initial_scan_task is None  # type: ignore[attr-defined]
-        # close 仍被调用
         mock_tm.close.assert_awaited_once()
 
-    async def test_on_shutdown_stops_watcher(self) -> None:
-        """on_shutdown 停止 _watcher（已存在的清理行为，不应回归）。"""
-        main._initial_scan_task = None  # type: ignore[attr-defined]
-
+    async def test_shutdown_stops_watcher(self) -> None:
+        """shutdown 停止 watcher（已存在的清理行为，不应回归）。"""
         mock_watcher = MagicMock()
         mock_watcher.stop = AsyncMock()
-        main._watcher = mock_watcher  # type: ignore[attr-defined]
 
         mock_tm = MagicMock()
         mock_tm.close = AsyncMock()
@@ -83,34 +76,27 @@ class TestOnShutdown:
             "backend.meta.apple.TokenManager.get_instance",
             return_value=mock_tm,
         ):
-            await main.on_shutdown()
+            await main._run_shutdown(
+                watcher=mock_watcher,  # type: ignore[arg-type]
+                initial_scan_task=None,
+            )
 
         mock_watcher.stop.assert_awaited_once()
-        # watcher 被清理后模块级引用置空
-        assert main._watcher is None  # type: ignore[attr-defined]
 
-    async def test_on_shutdown_idempotent_no_resources(self) -> None:
-        """无 _watcher / _initial_scan_task 时 on_shutdown 不报错。
+    async def test_shutdown_idempotent_no_resources(self) -> None:
+        """无 watcher / initial_scan_task 时 shutdown 不报错。
 
         TokenManager.close() 幂等：_client 为 None 时直接返回，
         不应抛异常。
         """
-        main._watcher = None  # type: ignore[attr-defined]
-        main._initial_scan_task = None  # type: ignore[attr-defined]
-
-        # 用真实 TokenManager 单例（_client 默认为 None，close 幂等返回）
         from backend.meta.apple import TokenManager
 
         TokenManager.reset_instance()
-        await main.on_shutdown()
-        # 重置单例避免测试间泄漏
+        await main._run_shutdown(watcher=None, initial_scan_task=None)
         TokenManager.reset_instance()
 
-    async def test_on_shutdown_tolerates_close_exception(self) -> None:
-        """close() 抛异常时 on_shutdown 不 re-raise（吞掉，记 warning）。"""
-        main._watcher = None  # type: ignore[attr-defined]
-        main._initial_scan_task = None  # type: ignore[attr-defined]
-
+    async def test_shutdown_tolerates_close_exception(self) -> None:
+        """close() 抛异常时 shutdown 不 re-raise（吞掉，记 warning）。"""
         mock_tm = MagicMock()
         mock_tm.close = AsyncMock(side_effect=RuntimeError("close failed"))
 
@@ -119,6 +105,6 @@ class TestOnShutdown:
             return_value=mock_tm,
         ):
             # 不应抛异常
-            await main.on_shutdown()
+            await main._run_shutdown(watcher=None, initial_scan_task=None)
 
         mock_tm.close.assert_awaited_once()

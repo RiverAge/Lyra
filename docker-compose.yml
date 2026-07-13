@@ -1,0 +1,46 @@
+# Lyra Docker Compose 部署配置
+#
+# 用法：
+#   1. 改下面 image 为你的 GHCR 镜像地址（ghcr.io/<用户名>/lyra:latest）
+#   2. 改 volumes 里的宿主 music 路径为你的 TrueNAS 音乐库实际路径
+#   3. docker login ghcr.io -u <GitHub用户名> -p <PAT>  （PAT 需 read:packages）
+#   4. docker compose up -d
+#
+# 更新镜像：
+#   docker compose pull && docker compose up -d
+#
+# 回滚到特定版本：
+#   改 image tag（如 :v0.1.0 或 commit sha 短前缀），再 up -d
+
+services:
+  lyra:
+    # ⚠️ 改成你的 GitHub 用户名（仓库名必须全小写，GHCR 要求）
+    image: ghcr.io/your-username/lyra:latest
+    container_name: lyra
+    ports:
+      - "8000:8000"
+    environment:
+      # 音乐库根（容器内固定 /music，宿主路径在 volumes 映射）
+      LYRA_MUSIC_LIBRARY_ROOT: /music
+      # SQLite 持久化（named volume lyra-data 挂到 /data）
+      LYRA_DB_PATH: /data/lyra.db
+      # Credits 爬取代理（CF Worker，可改）
+      LYRA_CREDITS_BASE_URL: ${LYRA_CREDITS_BASE_URL:-https://music.587626.xyz}
+      # static_dir / role_map 由镜像内 ENV 固定，不用改
+    volumes:
+      # ⚠️ 改左侧宿主路径为你的 TrueNAS 音乐库实际路径
+      # 读写挂载：Lyra 要写音频标签（mutagen 原地写）+ 写 sidecar（.lyrics/）
+      # 风险：容器内进程能写宿主音乐库——靠 TrueNAS ZFS 快照定时备份兜底
+      - /mnt/pool/music:/music
+      # SQLite named volume 持久化（容器重建不丢索引）
+      - lyra-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  lyra-data:

@@ -1,14 +1,21 @@
 """Lyra FastAPI 应用入口。
 
-创建 app、注册路由、配置 CORS、启动校验。
+创建 app、注册路由、启动校验、lifespan 资源管理。
+
+生产态：mount StaticFiles("/assets") + SPA fallback 路由，
+单容器同源 serve 前端产物（由 LYRA_STATIC_DIR 配置控制）。
+本机开发态：static_dir=None，前端走 vite dev server（:5173），
+vite.config.ts 的 proxy /api → :8000 解耦前后端。
 """
 
 import asyncio
 import logging
 import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import get_settings
 from backend.index.progress import ScannerProgress, set_progress
@@ -25,6 +32,7 @@ from backend.server.lyrics_sidecar_routes import lyrics_sidecar_router
 from backend.server.meta_routes import meta_router
 from backend.server.routes import router as api_router
 from backend.server.scanner_routes import scanner_router
+from backend.server.static_routes import router as static_router
 
 # 模块级 logger
 logger = logging.getLogger("lyra")
@@ -35,65 +43,31 @@ logging.basicConfig(
 )
 
 # ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
-
-app = FastAPI(
-    title="Lyra",
-    description="音乐元数据与歌词管理 Web 应用",
-    version="0.1.0",
-)
-
-# CORS — 允许前端 Vite dev server
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server 默认
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# 注册 API 路由 —— /api 前缀是前后端硬契约
-app.include_router(api_router, prefix="/api")
-app.include_router(library_router, prefix="/api")
-app.include_router(scanner_router, prefix="/api")
-app.include_router(play_router, prefix="/api")
-app.include_router(meta_router, prefix="/api")
-app.include_router(credits_router, prefix="/api")
-app.include_router(apple_router, prefix="/api")
-app.include_router(lyrics_match_router, prefix="/api")
-app.include_router(lyrics_sidecar_router, prefix="/api")
-app.include_router(editor_router, prefix="/api")
-
-# ---------------------------------------------------------------------------
-# 模块级资源引用（shutdown 时使用）
-# ---------------------------------------------------------------------------
-
-_watcher: Watcher | None = None
-_initial_scan_task: asyncio.Task[None] | None = None
-
-
-# ---------------------------------------------------------------------------
-# Startup event
+# lifespan（替代 deprecated @app.on_event）
 # ---------------------------------------------------------------------------
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
-    """启动校验：检查音乐库根配置状态 + 初始化数据库 schema + 启动 watcher。
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN201
+    """应用生命周期：启动初始化 + 停止清理。
 
-    不因配置缺失/路径不存在而 raise 终止进程——
-    让进程起来，健康检查暴露状态，便于排障。
+    启动逻辑（原 startup event 等价迁移，行为不变）：
+    1. 校验音乐库根配置（不因缺失而 raise，靠 /api/health 暴露状态）
+    2. 初始化 SQLite schema + store 注入
+    3. 启动扫描进度广播器
+    4. 启动 scanner + watcher + 后台初始扫描（非阻塞）
+    5. 预热 Apple WebAPI token
+
+    停止逻辑（原 shutdown event 等价迁移）：
+    1. cancel 初始扫描 task
+    2. stop watcher
+    3. close Apple token httpx client
     """
-    global _watcher, _initial_scan_task
+    # ---- startup ----
     settings = get_settings()
-
-    # -- 音乐库根校验（M1 已有逻辑，保留不变） --
     library_root = settings.music_library_root
 
+    # -- 音乐库根校验 --
     if library_root is None:
         logger.warning(
             "LYRA_MUSIC_LIBRARY_ROOT is not set. "
@@ -111,14 +85,12 @@ async def on_startup() -> None:
                 library_root,
             )
 
-    # -- 数据库 schema 初始化（M2-A1 新增） --
+    # -- 数据库 schema 初始化 --
     db_path = settings.db_path_resolved()
     logger.info("Database path resolved: %s", db_path)
 
     try:
-        # 确保父目录存在
         db_path.parent.mkdir(parents=True, exist_ok=True)
-
         store = IndexStore(db_path)
         await store.init_schema()
         set_store(store)
@@ -132,14 +104,19 @@ async def on_startup() -> None:
         set_store(None)
         set_progress(None)
         set_scanner(None)
+        # schema 失败时跳过 scanner/watcher/token 初始化，但进程继续运行
+        yield
         return
 
-    # -- 扫描进度广播器初始化（A2 新增） --
+    # -- 扫描进度广播器初始化 --
     progress = ScannerProgress()
     set_progress(progress)
     logger.info("Scanner progress tracker initialized.")
 
-    # -- 索引扫描器初始化（A2 新增） --
+    # -- 索引扫描器初始化 --
+    watcher: Watcher | None = None
+    initial_scan_task: asyncio.Task[None] | None = None
+
     if library_root is not None and library_path is not None and library_path.exists():
         scanner = Scanner(store, library_path)
         set_scanner(scanner)
@@ -150,12 +127,12 @@ async def on_startup() -> None:
 
         scanner.set_on_progress(_on_scan_progress)  # type: ignore[arg-type]
 
-        # -- 文件监听器初始化（A2 新增） --
-        _watcher = Watcher(scanner, library_path)
-        await _watcher.start()
+        # -- 文件监听器初始化 --
+        watcher = Watcher(scanner, library_path)
+        await watcher.start()
 
-        # -- 初始扫描（A2：首次启动异步全量扫描，不阻塞 startup） --
-        _initial_scan_task = asyncio.create_task(_initial_scan(scanner, progress))
+        # -- 初始扫描（非阻塞） --
+        initial_scan_task = asyncio.create_task(_initial_scan(scanner, progress))
     else:
         logger.warning(
             "Library root not available — scanner and watcher will not start. "
@@ -163,7 +140,7 @@ async def on_startup() -> None:
         )
         set_scanner(None)
 
-    # -- Apple WebAPI token 预热（M4-B 新增） --
+    # -- Apple WebAPI token 预热 --
     try:
         from backend.meta.apple import TokenManager
 
@@ -175,6 +152,44 @@ async def on_startup() -> None:
             "Apple WebAPI token pre-fetch failed. "
             "Will retry on first request."
         )
+
+    yield  # ← app 运行期
+
+    # ---- shutdown ----
+    await _run_shutdown(watcher, initial_scan_task)
+
+
+async def _run_shutdown(
+    watcher: Watcher | None,
+    initial_scan_task: asyncio.Task[None] | None,
+) -> None:
+    """lifespan shutdown 段：资源清理。
+
+    抽成独立函数便于单元测试（不依赖 lifespan async context manager 驱动）。
+    行为与原 on_shutdown 等价：
+    1. cancel initial_scan_task（吞 CancelledError）
+    2. stop watcher（若非 None）
+    3. close Apple token httpx client（异常吞掉记 warning）
+    """
+    if initial_scan_task is not None:
+        initial_scan_task.cancel()
+        try:
+            await initial_scan_task
+        except asyncio.CancelledError:
+            pass
+
+    if watcher is not None:
+        await watcher.stop()
+
+    # Apple WebAPI token client 关闭（与 startup 预热对称）
+    try:
+        from backend.meta.apple import TokenManager
+
+        await TokenManager.get_instance().close()
+    except Exception:
+        logger.warning("Failed to close Apple WebAPI token client.", exc_info=True)
+
+    logger.info("Lyra shutdown complete.")
 
 
 async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
@@ -201,38 +216,44 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Shutdown event
+# FastAPI app
 # ---------------------------------------------------------------------------
 
+app = FastAPI(
+    title="Lyra",
+    description="音乐元数据与歌词管理 Web 应用",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    """停止文件监听器 + 关闭 Apple WebAPI token client。
+# 注册 API 路由 —— /api 前缀是前后端硬契约
+app.include_router(api_router, prefix="/api")
+app.include_router(library_router, prefix="/api")
+app.include_router(scanner_router, prefix="/api")
+app.include_router(play_router, prefix="/api")
+app.include_router(meta_router, prefix="/api")
+app.include_router(credits_router, prefix="/api")
+app.include_router(apple_router, prefix="/api")
+app.include_router(lyrics_match_router, prefix="/api")
+app.include_router(lyrics_sidecar_router, prefix="/api")
+app.include_router(editor_router, prefix="/api")
 
-    关闭 TokenManager 内部的长连接 httpx.AsyncClient（token 抓取用），
-    避免容器正常停止时连接泄漏（§3.6 状态/资源约束）。
-    close() 幂等：_client 已为 None 时直接返回。
-    """
-    global _watcher, _initial_scan_task
+# ---------------------------------------------------------------------------
+# 静态产物 + SPA fallback（生产态）
+# ---------------------------------------------------------------------------
 
-    if _initial_scan_task is not None:
-        _initial_scan_task.cancel()
-        try:
-            await _initial_scan_task
-        except asyncio.CancelledError:
-            pass
-        _initial_scan_task = None
-
-    if _watcher is not None:
-        await _watcher.stop()
-        _watcher = None
-
-    # Apple WebAPI token client 关闭（与 startup 预热对称）
-    try:
-        from backend.meta.apple import TokenManager
-
-        await TokenManager.get_instance().close()
-    except Exception:
-        logger.warning("Failed to close Apple WebAPI token client.", exc_info=True)
-
-    logger.info("Lyra shutdown complete.")
+_settings = get_settings()
+if _settings.static_dir:
+    _static_path = Path(_settings.static_dir)
+    if _static_path.exists() and (_static_path / "assets").exists():
+        # 1. mount /assets —— Vite 产物固定子目录（JS/CSS/图片等带 hash 的资产）
+        app.mount("/assets", StaticFiles(directory=_static_path / "assets"), name="assets")
+        # 2. SPA fallback catch-all —— 必须在所有 /api/* 路由之后注册
+        app.include_router(static_router)
+        logger.info("Static files mounted at /assets, SPA fallback enabled (dir=%s)", _static_path)
+    else:
+        logger.warning(
+            "LYRA_STATIC_DIR is set to '%s' but the directory or its 'assets' subdir does not exist. "
+            "Static files not mounted.",
+            _settings.static_dir,
+        )
