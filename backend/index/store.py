@@ -49,12 +49,15 @@ CREATE INDEX IF NOT EXISTS idx_tracks_album  ON tracks(album);
 CREATE INDEX IF NOT EXISTS idx_tracks_path   ON tracks(path);
 
 -- scanner_status: 扫描进度与状态真源（§3.6 状态落库，SSE 断线重连可恢复）
+-- total_files: os.walk 阶段统计的匹配扩展名文件总数（含 hash 跳过的目录中的文件）
+-- count: 已处理的文件数（含 hash 跳过的，跳过=无需处理也算"已处理"）
 CREATE TABLE IF NOT EXISTS scanner_status (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
     state           TEXT    NOT NULL DEFAULT 'idle',
     scan_type       TEXT,
     count           INTEGER NOT NULL DEFAULT 0,
     folder_count    INTEGER NOT NULL DEFAULT 0,
+    total_files     INTEGER NOT NULL DEFAULT 0,
     started_at      INTEGER,
     last_scanned_at INTEGER,
     error_message   TEXT
@@ -98,12 +101,31 @@ class IndexStore:
 
         使用 CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS。
         所有索引/约束直接体现在 DDL 中（审计规则 §3.3）。
+        对已存在表补列用 ALTER TABLE（幂等：检测列存在性后 ALTER）。
         """
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             await db.executescript(_SCHEMA_SQL)
+            # 增量迁移：补列（CREATE TABLE IF NOT EXISTS 对已存在表不重建）
+            await self._migrate_scanner_status_total_files(db)
             await db.commit()
         logger.info("Schema initialized (db=%s)", self._db_path)
+
+    async def _migrate_scanner_status_total_files(self, db: aiosqlite.Connection) -> None:
+        """scanner_status 表加 total_files 列（幂等：列已存在则跳过）。
+
+        旧库（无 total_files 列）启动时自动迁移，不丢数据。
+        """
+        # PRAGMA table_info 返回列信息，检查 total_files 是否已存在
+        cursor = await db.execute("PRAGMA table_info(scanner_status)")
+        columns = await cursor.fetchall()
+        column_names = {row[1] for row in columns}  # row[1] = column name
+
+        if "total_files" not in column_names:
+            await db.execute(
+                "ALTER TABLE scanner_status ADD COLUMN total_files INTEGER NOT NULL DEFAULT 0"
+            )
+            logger.info("Migrated scanner_status: added total_files column")
 
     # ---- track queries ----
 
@@ -297,8 +319,9 @@ class IndexStore:
         """确保 scanner_status 表有 id=1 的行（INSERT OR IGNORE）。"""
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
-                "INSERT OR IGNORE INTO scanner_status (id, state, count, folder_count) "
-                "VALUES (1, 'idle', 0, 0)"
+                "INSERT OR IGNORE INTO scanner_status "
+                "(id, state, count, folder_count, total_files) "
+                "VALUES (1, 'idle', 0, 0, 0)"
             )
             await db.commit()
 

@@ -1,7 +1,7 @@
 """Lyra 扫描进度推送。
 
 FastAPI StreamingResponse SSE 实现 + 轮询端点支持。
-只发累计 count（不预估 total），限流广播（攒 0.5s 或每 50 文件发一次）。
+广播 count + folder_count + total_files，限流广播（攒 0.5s 或每 50 文件发一次）。
 状态真源是 SQLite scanner_status 表（§3.6）。
 """
 
@@ -64,7 +64,7 @@ class ScannerProgress:
 
     # ---- 广播 ----
 
-    async def broadcast(self, count: int, folder_count: int) -> None:
+    async def broadcast(self, count: int, folder_count: int, total: int = 0) -> None:
         """限流广播扫描进度到所有连接的 SSE 客户端。
 
         同时更新 SQLite scanner_status 表（作为进度真源）。
@@ -72,6 +72,7 @@ class ScannerProgress:
         Args:
             count: 当前累计已扫文件数。
             folder_count: 当前累计已扫 folder 数。
+            total: 库中匹配扩展名的文件总数（os.walk 阶段统计）。
         """
         # 限流判定
         now = time.monotonic()
@@ -96,6 +97,7 @@ class ScannerProgress:
             {
                 "count": count,
                 "folder_count": folder_count,
+                "total": total,
                 "timestamp": now_ms,
             },
             ensure_ascii=False,
@@ -116,13 +118,14 @@ class ScannerProgress:
         for q in dead_queues:
             self.unregister(q)
 
-    async def broadcast_scan_complete(self, count: int, folder_count: int) -> None:
+    async def broadcast_scan_complete(self, count: int, folder_count: int, total: int = 0) -> None:
         """扫描完成时强制发送最终事件（不限流）。"""
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
         data = json.dumps(
             {
                 "count": count,
                 "folder_count": folder_count,
+                "total": total,
                 "timestamp": now_ms,
                 "state": "completed",
             },

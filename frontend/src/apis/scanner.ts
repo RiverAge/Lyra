@@ -18,8 +18,11 @@ export type ScannerState =
 export interface ScannerStatus {
   state: ScannerState
   scan_type?: string
+  /** 已处理文件数（含 folder hash 跳过的文件；非实际入库数，确保进度到 100%） */
   count?: number
   folder_count?: number
+  /** 库中匹配扩展名文件总数（os.walk 统计，扫描中不变） */
+  total_files?: number
   started_at?: number | null
   last_scanned_at?: number | null
   error_message?: string | null

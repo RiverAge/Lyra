@@ -24,16 +24,41 @@
     </div>
 
     <!-- 进度数值 -->
-    <div v-if="scannerStore.isScanning" class="mb-3 flex items-center gap-6 text-xs text-secondary">
-      <span>
-        已扫描 <span class="font-mono font-medium text-primary">{{ scannerStore.count }}</span> 首
-      </span>
-      <span>
-        文件夹 <span class="font-mono font-medium text-primary">{{ scannerStore.folderCount }}</span> 个
-      </span>
-      <span v-if="elapsedLabel" class="text-tertiary">
-        {{ elapsedLabel }}
-      </span>
+    <div v-if="scannerStore.isScanning" class="mb-3 text-xs text-secondary">
+      <!-- 第一行：已扫 / 总数 + 百分比 -->
+      <div class="flex items-center gap-4">
+        <span>
+          已处理 <span class="font-mono font-medium text-primary">{{ scannerStore.count }}</span>
+          <template v-if="scannerStore.totalFiles > 0">
+            / <span class="font-mono font-medium text-primary">{{ scannerStore.totalFiles }}</span> 首
+          </template>
+          <template v-else>
+            首
+          </template>
+        </span>
+        <span v-if="percentLabel" class="font-mono font-medium text-accent">
+          {{ percentLabel }}
+        </span>
+      </div>
+      <!-- 第二行：文件夹 + 耗时 + ETA -->
+      <div class="mt-1 flex items-center gap-4">
+        <span>
+          文件夹 <span class="font-mono font-medium text-primary">{{ scannerStore.folderCount }}</span> 个
+        </span>
+        <span v-if="elapsedLabel" class="text-tertiary">
+          {{ elapsedLabel }}
+        </span>
+        <span v-if="etaLabel" class="text-tertiary">
+          剩余 {{ etaLabel }}
+        </span>
+      </div>
+      <!-- 进度条 -->
+      <div v-if="scannerStore.totalFiles > 0" class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+        <div
+          class="h-full rounded-full bg-accent transition-all duration-300"
+          :style="{ width: progressWidth }"
+        />
+      </div>
     </div>
 
     <!-- 已完成/空闲摘要 -->
@@ -44,6 +69,8 @@
       <span v-else-if="scannerStore.isIdle">
         尚未扫描
       </span>
+      <!-- 非扫描态的 count 含 hash 跳过文件（=已入库），mutagen 失败的文件
+           也计入 count 但未入库，故此数为近似值（自用场景偏差极小） -->
       <span v-if="scannerStore.count > 0 && !scannerStore.isScanning" class="ml-3">
         库内 <span class="font-mono text-primary">{{ scannerStore.count }}</span> 首
       </span>
@@ -85,7 +112,12 @@ import BaseButton from "@/components/ui/BaseButton.vue"
  * - onUnmounted 调 stopProgress 关闭 EventSource（防内存泄漏）
  * - 触发扫描按钮 → store.trigger()，409 由 store 翻译为「扫描进行中」
  * - 状态徽章用 token 类名（bg-success/bg-warning/bg-danger/bg-subtle）
+ * - 进度展示：总数 + 已扫 + 百分比 + ETA（已扫 ≥10 才显示 ETA 防抖）
  */
+
+/** ETA 防抖阈值：已扫文件数低于此值时不显示 ETA（早期速率不稳定） */
+const _ETA_MIN_PROCESSED = 10
+
 const scannerStore = useScannerStore()
 
 onMounted(async () => {
@@ -137,18 +169,59 @@ const badgeClass = computed(() => {
   }
 })
 
+const percentLabel = computed(() => {
+  const total = scannerStore.totalFiles
+  if (total <= 0) return ""
+  const pct = Math.min(100, Math.round((scannerStore.count / total) * 100))
+  return `${pct}%`
+})
+
+const progressWidth = computed(() => {
+  const total = scannerStore.totalFiles
+  if (total <= 0) return "0%"
+  const pct = Math.min(100, (scannerStore.count / total) * 100)
+  return `${pct}%`
+})
+
 const elapsedLabel = computed(() => {
   const started = scannerStore.startedAt
   if (!started) return ""
   const now = Date.now()
   const elapsedMs = Math.max(0, now - started)
   if (elapsedMs < 1000) return "刚启动"
-  const sec = Math.floor(elapsedMs / 1000)
+  return formatDuration(elapsedMs)
+})
+
+const etaLabel = computed(() => {
+  const total = scannerStore.totalFiles
+  const processed = scannerStore.count
+  const started = scannerStore.startedAt
+
+  // 条件不足时不显示 ETA
+  if (total <= 0 || processed < _ETA_MIN_PROCESSED || !started) return ""
+
+  const remaining = total - processed
+  if (remaining <= 0) return ""
+
+  const now = Date.now()
+  const elapsedMs = Math.max(1, now - started)
+  const rate = processed / elapsedMs // files per ms
+  const etaMs = remaining / rate
+
+  return formatDuration(etaMs)
+})
+
+/** 格式化毫秒时长为人类可读字符串（如 "45s"、"2m30s"、"1h12m"） */
+function formatDuration(ms: number): string {
+  const sec = Math.max(0, Math.round(ms / 1000))
   if (sec < 60) return `${sec}s`
   const m = Math.floor(sec / 60)
   const s = sec % 60
-  return `${m}m${s}s`
-})
+  if (m < 60) return `${m}m${s}s`
+  const h = Math.floor(m / 60)
+  const rm = m % 60
+  return `${h}h${rm}m`
+}
 
 function formatTimestamp(ts: number): string {
   try {

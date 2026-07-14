@@ -53,6 +53,7 @@ async def scanner_progress():
         """SSE 生成器包装——先发初始状态，再发实时事件。"""
         try:
             # 初始状态：从 scanner_status 表读当前进度（断线重连可恢复）
+            # count 口径：含 hash 跳过的文件（见 scanner_status docstring）
             status = await store.get_scanner_status()
             if status is not None:
                 now_ms = int(datetime.now(UTC).timestamp() * 1000)
@@ -62,6 +63,7 @@ async def scanner_progress():
                         "state": status["state"],
                         "count": status["count"],
                         "folder_count": status["folder_count"],
+                        "total": status["total_files"] if "total_files" in status.keys() else 0,
                         "timestamp": now_ms,
                     },
                     ensure_ascii=False,
@@ -99,10 +101,18 @@ async def scanner_status():
     从 SQLite scanner_status 表读取，不依赖 SSE 连接。
     若表为空（首次启动未扫描），返回默认 idle 状态。
 
+    字段口径（与 scanner.py scan_all docstring 一致）：
+    - count: 已处理文件数（含 folder hash 跳过的文件——跳过=无需处理也算）。
+      设计意图：确保扫描完成时 count == total_files，进度条到 100%。
+      非"实际入库数"——mutagen 读失败的文件也计入 count。
+    - total_files: os.walk 阶段统计的匹配扩展名文件总数。
+    - folder_count: 本次扫描实际调用 scan_folder 的目录数。
+
     Returns:
         JSON: {"state": "idle|scanning|error", "count": N,
-               "folder_count": F, "started_at": ms|null,
-               "last_scanned_at": ms|null, "error_message": str|null,
+               "folder_count": F, "total_files": T,
+               "started_at": ms|null, "last_scanned_at": ms|null,
+               "error_message": str|null,
                "library_root": str|null, "library_configured": bool}
     """
     settings = get_settings()
@@ -117,6 +127,7 @@ async def scanner_status():
             "state": "not_initialized",
             "count": 0,
             "folder_count": 0,
+            "total_files": 0,
             "started_at": None,
             "last_scanned_at": None,
             "error_message": None,
@@ -131,6 +142,7 @@ async def scanner_status():
             "state": "idle",
             "count": 0,
             "folder_count": 0,
+            "total_files": 0,
             "started_at": None,
             "last_scanned_at": None,
             "error_message": None,
@@ -143,6 +155,7 @@ async def scanner_status():
         "scan_type": row["scan_type"],
         "count": row["count"],
         "folder_count": row["folder_count"],
+        "total_files": row["total_files"] if "total_files" in row.keys() else 0,
         "started_at": row["started_at"],
         "last_scanned_at": row["last_scanned_at"],
         "error_message": row["error_message"],

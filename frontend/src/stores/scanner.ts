@@ -6,7 +6,7 @@ import { fetchScannerStatus, triggerScan } from "@/apis/scanner"
  * 扫描 Store
  *
  * 职责：
- * - 维护扫描状态（state/count/folder_count/started_at 等）
+ * - 维护扫描状态（state/count/folder_count/totalFiles/started_at 等）
  * - 提供 SSE 连接管理（startProgress / stopProgress）
  * - 提供触发扫描能力（trigger），409 时返回友好提示
  *
@@ -17,16 +17,21 @@ import { fetchScannerStatus, triggerScan } from "@/apis/scanner"
  */
 
 export interface ScannerProgress {
+  /** 已处理文件数（含 folder hash 跳过的文件；与后端 count 口径一致） */
   count: number
   folderCount: number
+  /** 库中匹配扩展名文件总数（os.walk 统计，扫描中不变） */
+  total: number
   timestamp: number
 }
 
 export const useScannerStore = defineStore("scanner", () => {
   const state = ref<ScannerState>("idle")
   const scanType = ref<string | null>(null)
+  /** 已处理文件数（含 hash 跳过；非"实际入库数"，确保进度能到 100%） */
   const count = ref(0)
   const folderCount = ref(0)
+  const totalFiles = ref(0)
   const startedAt = ref<number | null>(null)
   const lastScannedAt = ref<number | null>(null)
   const errorMessage = ref<string | null>(null)
@@ -50,6 +55,7 @@ export const useScannerStore = defineStore("scanner", () => {
     scanType.value = s.scan_type ?? null
     count.value = s.count ?? 0
     folderCount.value = s.folder_count ?? 0
+    totalFiles.value = s.total_files ?? 0
     startedAt.value = s.started_at ?? null
     lastScannedAt.value = s.last_scanned_at ?? null
     errorMessage.value = s.error_message ?? null
@@ -112,12 +118,13 @@ export const useScannerStore = defineStore("scanner", () => {
           connected.value = true
           return
         case "init": {
-          // init 事件含 state/count/folder_count/timestamp
+          // init 事件含 state/count/folder_count/total/timestamp
           if (typeof data.state === "string") {
             state.value = data.state as ScannerState
           }
           if (typeof data.count === "number") count.value = data.count
           if (typeof data.folder_count === "number") folderCount.value = data.folder_count
+          if (typeof data.total === "number") totalFiles.value = data.total
           if (typeof data.timestamp === "number") {
             startedAt.value = startedAt.value ?? data.timestamp
           }
@@ -132,6 +139,7 @@ export const useScannerStore = defineStore("scanner", () => {
     // 无 type 字段：实时进度或完成事件
     if (typeof data.count === "number") count.value = data.count
     if (typeof data.folder_count === "number") folderCount.value = data.folder_count
+    if (typeof data.total === "number") totalFiles.value = data.total
     if (typeof data.timestamp === "number" && startedAt.value === null) {
       startedAt.value = data.timestamp
     }
@@ -203,6 +211,7 @@ export const useScannerStore = defineStore("scanner", () => {
     scanType,
     count,
     folderCount,
+    totalFiles,
     startedAt,
     lastScannedAt,
     errorMessage,

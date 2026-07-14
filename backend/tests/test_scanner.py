@@ -8,6 +8,7 @@ scanner_status 落库+读取、删除检测、忽略规则，
 import shutil
 from pathlib import Path
 
+import aiosqlite
 import pytest
 
 from backend.index.scanner import _compute_folder_hash, _is_audio_file, _should_ignore
@@ -122,12 +123,13 @@ async def test_scanner_status_default(store: IndexStore) -> None:
 
 
 async def test_scanner_status_read_write(store: IndexStore) -> None:
-    """set_scanner_status → get_scanner_status 读写一致。"""
+    """set_scanner_status → get_scanner_status 读写一致（含 total_files）。"""
     await store.set_scanner_status(
         state="scanning",
         scan_type="full",
         count=42,
         folder_count=3,
+        total_files=1000,
         started_at=1750000000000,
     )
 
@@ -137,6 +139,7 @@ async def test_scanner_status_read_write(store: IndexStore) -> None:
     assert status["scan_type"] == "full"
     assert status["count"] == 42
     assert status["folder_count"] == 3
+    assert status["total_files"] == 1000
     assert status["started_at"] == 1750000000000
 
 
@@ -161,6 +164,7 @@ async def test_scanner_status_persists(store: IndexStore) -> None:
         state="scanning",
         count=99,
         folder_count=5,
+        total_files=500,
         started_at=1750000000000,
     )
 
@@ -172,6 +176,77 @@ async def test_scanner_status_persists(store: IndexStore) -> None:
     assert status["state"] == "scanning"
     assert status["count"] == 99
     assert status["folder_count"] == 5
+    assert status["total_files"] == 500
+
+
+async def test_scanner_status_total_files_migration(tmp_path: Path) -> None:
+    """旧库（无 total_files 列）启动后 ALTER 迁移不报错，total_files 默认 0。"""
+    import sqlite3
+
+    from backend.index.store import IndexStore, set_store
+
+    db_path = tmp_path / "migrate_test.db"
+
+    # 1. 创建旧版 schema（无 total_files 列）
+    async with aiosqlite.connect(str(db_path)) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS scanner_status (
+                id              INTEGER PRIMARY KEY CHECK (id = 1),
+                state           TEXT    NOT NULL DEFAULT 'idle',
+                scan_type       TEXT,
+                count           INTEGER NOT NULL DEFAULT 0,
+                folder_count    INTEGER NOT NULL DEFAULT 0,
+                started_at      INTEGER,
+                last_scanned_at INTEGER,
+                error_message   TEXT
+            );
+        """)
+        # 插入一行旧数据
+        await db.execute(
+            "INSERT INTO scanner_status (id, state, count, folder_count) "
+            "VALUES (1, 'idle', 42, 3)"
+        )
+        await db.commit()
+
+    # 2. 用 IndexStore.init_schema() 触发迁移
+    store = IndexStore(db_path)
+    await store.init_schema()
+    set_store(store)
+
+    # 3. 验证迁移后 total_files 列存在且默认为 0
+    status = await store.get_scanner_status()
+    assert status is not None
+    assert status["count"] == 42  # 旧数据保留
+    assert status["folder_count"] == 3
+    assert status["total_files"] == 0  # 新列默认值
+
+    # 4. 验证可以正常写入 total_files
+    await store.set_scanner_status(total_files=1000)
+    status = await store.get_scanner_status()
+    assert status is not None
+    assert status["total_files"] == 1000
+
+    set_store(None)
+
+
+async def test_scanner_status_total_files_migration_idempotent(tmp_path: Path) -> None:
+    """多次 init_schema 不报错（ALTER 迁移幂等：列已存在则跳过）。"""
+    from backend.index.store import IndexStore
+
+    db_path = tmp_path / "idempotent_test.db"
+    store = IndexStore(db_path)
+
+    # 第一次 init_schema：创建表 + 加列
+    await store.init_schema()
+
+    # 第二次 init_schema：列已存在，不应报错
+    await store.init_schema()
+
+    # 验证功能正常
+    await store.set_scanner_status(state="scanning", total_files=500)
+    status = await store.get_scanner_status()
+    assert status is not None
+    assert status["total_files"] == 500
 
 
 # ============================================================================
@@ -594,3 +669,152 @@ async def test_read_audio_tags_mp3_txxx_clean_text(store: IndexStore, tmp_path: 
     assert "<TXXX" not in tag_map_str, (
         f"tag_map should NOT contain raw repr, got: {tag_map_str[:300]}"
     )
+
+
+# ============================================================================
+# total_files 统计 + scan_all 集成测试
+# ============================================================================
+
+
+async def test_scan_all_total_files_counted(
+    store: IndexStore, tmp_path: Path
+) -> None:
+    """scan_all 在 os.walk 阶段统计 total_files，返回值含 total_files 字段。"""
+    from backend.index.scanner import Scanner
+
+    # 构造两个目录，各含音频文件
+    dir1 = tmp_path / "Artist1" / "Album1"
+    dir1.mkdir(parents=True)
+    dir2 = tmp_path / "Artist2" / "Album2"
+    dir2.mkdir(parents=True)
+
+    # 用空字节构造 m4a 文件（mutagen 打不开，但不影响 total 统计）
+    (dir1 / "01.m4a").write_bytes(b"\x00" * 100)
+    (dir1 / "02.m4a").write_bytes(b"\x00" * 100)
+    (dir2 / "01.flac").write_bytes(b"\x00" * 100)
+
+    scanner = Scanner(store, tmp_path)
+    result = await scanner.scan_all()
+
+    # total_files 应为 3（2 个 m4a + 1 个 flac）
+    assert result["total_files"] == 3, (
+        f"total_files should count all audio files, got {result['total_files']}"
+    )
+    assert "total_files" in result
+
+    # scanner_status 表也应记录了 total_files
+    status = await store.get_scanner_status()
+    assert status is not None
+    # 扫描完成后 count 和 total_files 可能不同（因 mutagen 读失败不计入 processed），
+    # 但 total_files 一定是 os.walk 统计的原始值
+    assert status["total_files"] == 3
+
+
+async def test_scan_all_total_files_includes_hash_skipped(
+    store: IndexStore, tmp_path: Path
+) -> None:
+    """folder hash 跳过的目录中文件仍计入 total_files，且计入 count（跳过=已处理）。"""
+    from backend.index.scanner import Scanner
+
+    folder = tmp_path / "cached_album"
+    folder.mkdir()
+
+    # 创建空 m4a
+    (folder / "01.m4a").write_bytes(b"\x00" * 100)
+    (folder / "02.m4a").write_bytes(b"\x00" * 100)
+
+    # 预写 watermark，使 scan_folder 跳过
+    h = _compute_folder_hash(folder)
+    await store.set_folder_hash(str(folder).replace("\\", "/"), h)
+
+    scanner = Scanner(store, tmp_path)
+    result = await scanner.scan_all()
+
+    # total_files 应为 2（即使 hash 跳过也计入）
+    assert result["total_files"] == 2, (
+        f"total_files should include hash-skipped files, got {result['total_files']}"
+    )
+    # processed（count）也应为 2（跳过的目录文件计入 processed）
+    assert result["files_processed"] == 2, (
+        f"files_processed should include hash-skipped as 'processed', "
+        f"got {result['files_processed']}"
+    )
+
+
+async def test_scan_all_total_files_empty_library(
+    store: IndexStore, tmp_path: Path
+) -> None:
+    """空库扫描 → total_files=0。"""
+    from backend.index.scanner import Scanner
+
+    scanner = Scanner(store, tmp_path)
+    result = await scanner.scan_all()
+
+    assert result["total_files"] == 0
+    assert result["files_processed"] == 0
+
+
+# ============================================================================
+# ScannerProgress SSE total 字段测试
+# ============================================================================
+
+
+async def test_progress_broadcast_includes_total() -> None:
+    """broadcast 方法发送的 SSE 事件 JSON 含 total 字段。"""
+    import json
+
+    from backend.index.progress import ScannerProgress
+
+    progress = ScannerProgress()
+    queue = progress.register()
+
+    await progress.broadcast(count=50, folder_count=5, total=1000)
+
+    # 从 queue 取出消息
+    msg = queue.get_nowait()
+    assert msg.startswith("data: ")
+    data = json.loads(msg[len("data: "):])
+    assert data["count"] == 50
+    assert data["folder_count"] == 5
+    assert data["total"] == 1000
+
+    progress.unregister(queue)
+
+
+async def test_progress_broadcast_default_total() -> None:
+    """broadcast 方法 total 默认为 0。"""
+    import json
+
+    from backend.index.progress import ScannerProgress
+
+    progress = ScannerProgress()
+    queue = progress.register()
+
+    await progress.broadcast(count=10, folder_count=1)
+
+    msg = queue.get_nowait()
+    data = json.loads(msg[len("data: "):])
+    assert data["total"] == 0
+
+    progress.unregister(queue)
+
+
+async def test_progress_broadcast_scan_complete_includes_total() -> None:
+    """broadcast_scan_complete 发送的事件含 total 字段。"""
+    import json
+
+    from backend.index.progress import ScannerProgress
+
+    progress = ScannerProgress()
+    queue = progress.register()
+
+    await progress.broadcast_scan_complete(count=1000, folder_count=50, total=1000)
+
+    msg = queue.get_nowait()
+    data = json.loads(msg[len("data: "):])
+    assert data["count"] == 1000
+    assert data["folder_count"] == 50
+    assert data["total"] == 1000
+    assert data["state"] == "completed"
+
+    progress.unregister(queue)

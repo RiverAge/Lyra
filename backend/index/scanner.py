@@ -273,12 +273,12 @@ class Scanner:
     def __init__(self, store: IndexStore, library_root: Path) -> None:
         self._store = store
         self._library_root = library_root.resolve()
-        self._on_progress: Callable[[int, int], Awaitable[object]] | None = None
+        self._on_progress: Callable[[int, int, int], Awaitable[object]] | None = None
 
     def set_on_progress(
-        self, callback: Callable[[int, int], Awaitable[object]]
+        self, callback: Callable[[int, int, int], Awaitable[object]]
     ) -> None:
-        """设置进度回调 async callback(cumulative_files, cumulative_folders)。"""
+        """设置进度回调 async callback(cumulative_files, cumulative_folders, total_files)。"""
         self._on_progress = callback
 
     # ---- 扫描入口 ----
@@ -381,8 +381,13 @@ class Scanner:
         folder_count 口径：本次全量扫描中实际调用了 scan_folder 的目录数
         （即含音频文件且未被 hash 跳过的叶子目录数）。
 
+        total_files 口径：os.walk 阶段统计的所有匹配扩展名文件总数。
+        count 口径：已处理的文件数。folder hash 跳过的目录中文件也计入 count
+        （跳过=无需处理也算"已处理"，确保扫描完成时 count == total_files）。
+
         Returns:
-            {"files_processed": N, "files_deleted": D, "folders_processed": F}
+            {"files_processed": N, "files_deleted": D, "folders_processed": F,
+             "total_files": T}
         """
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
 
@@ -391,6 +396,7 @@ class Scanner:
             scan_type="full",
             count=0,
             folder_count=0,
+            total_files=0,
             started_at=now_ms,
             error_message=None,
         )
@@ -400,8 +406,9 @@ class Scanner:
         last_error: str | None = None
 
         try:
-            # 递归收集所有含音频文件的叶子目录（走 os.walk 遍历整棵树）
+            # 递归收集所有含音频文件的叶子目录，同时统计文件总数
             candidate_dirs: list[Path] = []
+            dir_file_counts: dict[str, int] = {}  # dir_path → 文件数
             for dirpath_str, dirnames, filenames in os.walk(self._library_root):
                 dirpath = Path(dirpath_str)
 
@@ -415,33 +422,52 @@ class Scanner:
                 if _should_ignore(dirpath):
                     continue
 
-                # 检查该目录是否包含音频文件
-                has_audio = any(
-                    not entry.is_dir() and _is_audio_file(entry)
-                    for entry in dirpath.iterdir()
-                    if not _should_ignore(entry)
-                )
-                if has_audio:
+                # 统计该目录内匹配扩展名的文件数（与 _compute_folder_hash 口径一致：
+                # 只算直属音频文件，忽略 .dot 文件）
+                audio_count = 0
+                for fname in filenames:
+                    if _should_ignore_path_part(fname):
+                        continue
+                    if Path(fname).suffix.lower() in DEFAULT_EXTENSIONS:
+                        audio_count += 1
+
+                if audio_count > 0:
                     candidate_dirs.append(dirpath)
+                    dir_key = str(dirpath).replace("\\", "/")
+                    dir_file_counts[dir_key] = audio_count
+                    total_files += audio_count
 
             # 按路径排序，确保扫描顺序确定
             candidate_dirs.sort(key=lambda p: str(p))
 
+            # 写入 total_files（os.walk 阶段统计完毕，后续不再变）
+            await self._store.set_scanner_status(total_files=total_files)
+
+            processed_files = 0
+
             for folder in candidate_dirs:
                 try:
                     files_done = await self.scan_folder(folder)
-                    total_files += files_done
+                    folder_key = str(folder).replace("\\", "/")
+
+                    # folder hash 跳过时 scan_folder 返回 0，
+                    # 但这些文件仍算"已处理"（跳过=无需处理），
+                    # 将该目录的文件数计入 processed 以确保进度完整
+                    if files_done == 0:
+                        processed_files += dir_file_counts.get(folder_key, 0)
+                    else:
+                        processed_files += files_done
                     total_folders += 1
 
                     # 更新 scanner_status 累计
                     await self._store.set_scanner_status(
-                        count=total_files,
+                        count=processed_files,
                         folder_count=total_folders,
                     )
 
                     # 进度回调（累计）
                     if self._on_progress is not None:
-                        await self._on_progress(total_files, total_folders)
+                        await self._on_progress(processed_files, total_folders, total_files)
 
                 except Exception:
                     logger.exception("扫描目录失败: %s", folder)
@@ -454,19 +480,21 @@ class Scanner:
             await self._store.set_scanner_status(
                 state="idle",
                 scan_type=None,
+                count=processed_files,
                 last_scanned_at=now_ms,
                 error_message=last_error,
             )
 
             logger.info(
-                "全量扫描完成: files=%d, deleted=%d, folders=%d",
-                total_files, deleted, total_folders,
+                "全量扫描完成: files=%d, deleted=%d, folders=%d, total=%d",
+                processed_files, deleted, total_folders, total_files,
             )
 
             return {
-                "files_processed": total_files,
+                "files_processed": processed_files,
                 "files_deleted": deleted,
                 "folders_processed": total_folders,
+                "total_files": total_files,
             }
 
         except Exception:
