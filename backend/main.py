@@ -10,7 +10,6 @@ vite.config.ts 的 proxy /api → :8000 解耦前后端。
 
 import asyncio
 import logging
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from backend.index.progress import ScannerProgress, set_progress
 from backend.index.scanner import Scanner, set_scanner
 from backend.index.store import IndexStore, set_store
 from backend.index.watcher import Watcher
+from backend.log_setup import AccessLogMiddleware, configure_logging
 from backend.play.stream import play_router
 from backend.server.apple_routes import apple_router
 from backend.server.credits_routes import credits_router
@@ -35,13 +35,12 @@ from backend.server.scanner_routes import scanner_router
 from backend.server.settings_routes import settings_router
 from backend.server.static_routes import router as static_router
 
+# ---- 日志初始化（必须在所有 logger 使用之前） ----
+_settings = get_settings()
+configure_logging(_settings)
+
 # 模块级 logger
 logger = logging.getLogger("lyra")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
 
 # ---------------------------------------------------------------------------
 # lifespan（替代 deprecated @app.on_event）
@@ -123,10 +122,10 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN20
         set_scanner(scanner)
 
         # 注册进度回调：scanner → progress 广播
-        async def _on_scan_progress(count: int, folder_count: int) -> None:
-            await progress.broadcast(count, folder_count)
+        async def _on_scan_progress(count: int, folder_count: int, total: int) -> None:
+            await progress.broadcast(count, folder_count, total)
 
-        scanner.set_on_progress(_on_scan_progress)  # type: ignore[arg-type]
+        scanner.set_on_progress(_on_scan_progress)
 
         # -- 文件监听器初始化 --
         watcher = Watcher(scanner, library_path)
@@ -153,6 +152,14 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN20
             "Apple WebAPI token pre-fetch failed. "
             "Will retry on first request."
         )
+
+    # -- ffmpeg 可用性探测 --
+    try:
+        from backend.play.transcode import probe_ffmpeg
+
+        probe_ffmpeg()
+    except Exception:
+        logger.warning("ffmpeg probe failed.", exc_info=True)
 
     yield  # ← app 运行期
 
@@ -204,16 +211,18 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
         await progress.broadcast_scan_complete(
             result["files_processed"],
             result["folders_processed"],
+            result["total_files"],
         )
         logger.info(
-            "Initial scan complete: %d files indexed, %d deleted, %d folders",
+            "Initial scan complete: %d files indexed, %d deleted, %d folders, %d total",
             result["files_processed"],
             result["files_deleted"],
             result["folders_processed"],
+            result["total_files"],
         )
     except Exception:
         logger.exception("Initial scan failed")
-        await progress.broadcast_scan_complete(0, 0)
+        await progress.broadcast_scan_complete(0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +235,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Access log 中间件（必须在路由注册之前添加，确保所有请求都被记录）
+app.add_middleware(AccessLogMiddleware)
 
 # 注册 API 路由 —— /api 前缀是前后端硬契约
 app.include_router(api_router, prefix="/api")
@@ -244,7 +256,6 @@ app.include_router(settings_router, prefix="/api")
 # 静态产物 + SPA fallback（生产态）
 # ---------------------------------------------------------------------------
 
-_settings = get_settings()
 if _settings.static_dir:
     _static_path = Path(_settings.static_dir)
     if _static_path.exists() and (_static_path / "assets").exists():
@@ -255,7 +266,7 @@ if _settings.static_dir:
         logger.info("Static files mounted at /assets, SPA fallback enabled (dir=%s)", _static_path)
     else:
         logger.warning(
-            "LYRA_STATIC_DIR is set to '%s' but the directory or its 'assets' subdir does not exist. "
-            "Static files not mounted.",
+            "LYRA_STATIC_DIR is set to '%s' but the directory or "
+            "its 'assets' subdir does not exist. Static files not mounted.",
             _settings.static_dir,
         )
