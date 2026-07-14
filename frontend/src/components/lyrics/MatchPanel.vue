@@ -1,16 +1,17 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between gap-2">
       <h3 class="text-base font-medium text-primary">
         在线匹配
       </h3>
-      <button
-        class="rounded-sm bg-accent px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      <BaseButton
+        variant="primary"
+        size="sm"
         :disabled="store.matching"
         @click="onMatch"
       >
         {{ store.matching ? "匹配中..." : "在线匹配" }}
-      </button>
+      </BaseButton>
     </header>
 
     <!-- 错误 -->
@@ -76,13 +77,14 @@
       <div v-if="store.bestTtml" class="mt-3">
         <TtmlPreview :ttml="store.bestTtml" />
         <div class="mt-2 flex items-center gap-2">
-          <button
-            class="rounded-sm bg-success px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          <BaseButton
+            variant="ghost"
+            size="sm"
             :disabled="!store.canAdopt || store.writing"
             @click="onAdopt"
           >
             {{ store.writing ? "写入中..." : "采纳" }}
-          </button>
+          </BaseButton>
           <span class="text-xs text-tertiary">
             将写入到 <span class="font-medium text-secondary">{{ store.lyricSource ?? "—" }}</span> sidecar
           </span>
@@ -104,6 +106,7 @@
 <script setup lang="ts">
 import type { Candidate, MatchDecision } from "@/apis/lyrics"
 import { useLyricsStore } from "@/stores/lyrics"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import TtmlPreview from "./TtmlPreview.vue"
 
 /**

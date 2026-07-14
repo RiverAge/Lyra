@@ -1,16 +1,17 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between">
       <h3 class="text-base font-medium text-primary">
         已有 sidecar
       </h3>
-      <button
-        class="rounded-sm border border-default px-2 py-1 text-xs text-secondary transition-colors hover:bg-hover disabled:opacity-50"
+      <BaseButton
+        variant="ghost"
+        size="sm"
         :disabled="store.loadingSidecars"
         @click="reload"
       >
         刷新
-      </button>
+      </BaseButton>
     </header>
 
     <!-- 加载中 -->
@@ -50,19 +51,22 @@
             </p>
           </div>
           <div class="flex flex-shrink-0 items-center gap-1">
-            <button
-              class="rounded-sm border border-default px-2 py-1 text-xs text-primary transition-colors hover:bg-hover"
+            <BaseButton
+              variant="secondary"
+              size="sm"
               @click="toggleExpand(item.source)"
             >
               {{ expanded.has(item.source) ? "收起" : "查看" }}
-            </button>
-            <button
-              class="rounded-sm border border-default px-2 py-1 text-xs text-danger transition-colors hover:bg-hover disabled:opacity-50"
+            </BaseButton>
+            <BaseButton
+              variant="ghost"
+              size="sm"
+              danger
               :disabled="store.deleting === item.source"
               @click="confirmRemove(item.source)"
             >
               {{ store.deleting === item.source ? "删除中" : "删除" }}
-            </button>
+            </BaseButton>
           </div>
         </div>
 
@@ -94,7 +98,7 @@
       role="dialog"
       aria-modal="true"
     >
-      <div class="w-full max-w-sm rounded-md border border-default bg-surface p-4 shadow-md">
+      <div class="card w-full max-w-sm p-4 shadow-md">
         <h4 class="mb-2 text-base font-medium text-primary">
           确认删除 sidecar
         </h4>
@@ -102,19 +106,17 @@
           将删除 <span class="font-medium text-primary">{{ pendingDelete }}</span> sidecar。此操作不可撤销。
         </p>
         <div class="flex justify-end gap-2">
-          <button
-            class="rounded-sm border border-default px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
-            @click="pendingDelete = null"
-          >
+          <BaseButton variant="secondary" @click="pendingDelete = null">
             取消
-          </button>
-          <button
-            class="rounded-sm bg-danger px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          </BaseButton>
+          <BaseButton
+            variant="primary"
+            danger
             :disabled="store.deleting !== null"
             @click="doRemove"
           >
             {{ store.deleting !== null ? "删除中" : "删除" }}
-          </button>
+          </BaseButton>
         </div>
       </div>
     </div>
@@ -124,6 +126,7 @@
 <script setup lang="ts">
 import type { LyricSource, SidecarItem } from "@/apis/lyrics"
 import { useLyricsStore } from "@/stores/lyrics"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import TtmlPreview from "./TtmlPreview.vue"
 
 /**

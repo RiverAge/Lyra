@@ -1,9 +1,12 @@
 """Lyra API 路由——library 端点。"""
 
+import asyncio
 import logging
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
+from backend.config import get_settings
 from backend.index.store import get_store
 
 logger = logging.getLogger(__name__)
@@ -104,3 +107,111 @@ async def get_track(track_id: str) -> dict:
         )
 
     return _track_row_to_dict(dict(row))
+
+
+# ---------------------------------------------------------------------------
+# GET /library/{track_id}/artwork — 封面图（从音频 tag 现读 bytes）
+# ---------------------------------------------------------------------------
+
+
+def _read_cover_bytes_sync(file_path: Path) -> tuple[bytes, str] | None:
+    """同步：用 mutagen 从音频文件读封面 bytes（在 executor 中运行）。
+
+    Returns:
+        (cover_bytes, media_type) 或 None（无封面）。
+    """
+    from mutagen.flac import FLAC
+    from mutagen.mp3 import MP3
+    from mutagen.mp4 import MP4, MP4Cover
+
+    mf = mutagen.File(str(file_path))
+    if mf is None:
+        return None
+
+    if isinstance(mf, MP4):
+        covr_list = mf.get("covr")
+        if not covr_list:
+            return None
+        cover = covr_list[0]
+        # MP4Cover.imageformat: 0x0d=JPEG, 0x0e=PNG, 0x00=unknown(按 BMP)
+        if getattr(cover, "imageformat", None) == MP4Cover.Format.PNG:
+            media_type = "image/png"
+        else:
+            media_type = "image/jpeg"
+        return bytes(cover), media_type
+
+    if isinstance(mf, FLAC):
+        pictures = mf.pictures
+        if not pictures:
+            return None
+        pic = pictures[0]
+        media_type = pic.mime or "image/jpeg"
+        return pic.data, media_type
+
+    if isinstance(mf, MP3):
+        for key in mf:
+            if not key.startswith("APIC:"):
+                continue
+            frame = mf[key]
+            data = getattr(frame, "data", None)
+            if data:
+                media_type = getattr(frame, "mime", None) or "image/jpeg"
+                return data, media_type
+        return None
+
+    return None
+
+
+@library_router.get("/library/{track_id}/artwork")
+async def get_track_artwork(track_id: str) -> Response:
+    """封面图端点——从音频文件 tag 现读封面 bytes。
+
+    前端 ``<img src="/api/library/{id}/artwork">`` 直接用。
+    has_cover=0 或文件无封面 → 404。
+
+    Raises:
+        HTTPException 422: track_id 非数字。
+        HTTPException 404: track 不存在 / 无封面 / 文件缺失。
+        HTTPException 503: store 未初始化 / library_root 未配置。
+    """
+    try:
+        rowid = int(track_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid track id: {track_id!r}",
+        ) from e
+
+    store = get_store()
+    if store is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
+    row = await store.get_track_by_id(rowid)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Track {track_id} not found")
+
+    if not row["has_cover"]:
+        raise HTTPException(status_code=404, detail="No cover art")
+
+    # 路径安全校验（照 stream.py _resolve_track 模式）
+    track_path = Path(row["path"]).resolve()
+    settings = get_settings()
+    library_root = settings.music_library_path()
+    if library_root is None:
+        raise HTTPException(status_code=503, detail="Library root not configured")
+    if not track_path.is_relative_to(library_root.resolve()):
+        raise HTTPException(status_code=404, detail="Track not found")
+    if not track_path.is_file():
+        raise HTTPException(status_code=404, detail="Track not found")
+
+    # mutagen 同步调用 → executor
+    import mutagen  # noqa: PLC0415 — 局部 import 照 scanner.py:116 模式
+
+    result = await asyncio.get_event_loop().run_in_executor(
+        None, _read_cover_bytes_sync, track_path,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="No cover art")
+
+    cover_bytes, media_type = result
+    return Response(content=cover_bytes, media_type=media_type)

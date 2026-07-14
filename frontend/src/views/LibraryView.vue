@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-6xl px-6 py-6 animate-fade-in">
+  <div class="mx-auto max-w-6xl px-6 py-6">
     <!-- 页头 -->
     <div class="mb-6 flex items-center justify-between gap-3">
       <div>
@@ -10,12 +10,9 @@
           浏览音乐库内的曲目
         </p>
       </div>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="reload"
-      >
+      <BaseButton variant="ghost" size="sm" @click="reload">
         刷新
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 主体：扫描进度 + 列表 -->
@@ -47,6 +44,7 @@
 <script setup lang="ts">
 import { useLibraryStore } from "@/stores/library"
 import { usePlayerStore } from "@/stores/player"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import TrackList from "@/components/library/TrackList.vue"
 import ScanProgress from "@/components/scanner/ScanProgress.vue"
 import AudioPlayer from "@/components/player/AudioPlayer.vue"

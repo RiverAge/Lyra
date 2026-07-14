@@ -1,41 +1,35 @@
 <template>
   <div class="mx-auto max-w-6xl px-6 py-6">
     <!-- 返回链接 -->
-    <button
-      class="mb-4 text-xs text-secondary transition-colors hover:text-primary"
-      @click="router.back()"
-    >
+    <BaseButton variant="ghost" size="sm" @click="router.back()">
       ← 返回曲库
-    </button>
+    </BaseButton>
 
     <!-- 加载中 -->
-    <div v-if="loading" class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-if="loading" class="card p-8 text-center">
       <p class="text-sm text-secondary">
         正在加载 track 信息…
       </p>
     </div>
 
     <!-- 加载失败 -->
-    <div v-else-if="loadError" class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-else-if="loadError" class="card p-8 text-center">
       <p class="mb-2 text-sm font-medium text-danger">
         加载失败
       </p>
       <p class="mb-3 text-xs text-secondary">
         {{ loadError }}
       </p>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="loadTrack"
-      >
+      <BaseButton variant="secondary" size="sm" @click="loadTrack">
         重试
-      </button>
+      </BaseButton>
     </div>
 
     <!-- track 详情壳 -->
     <template v-else-if="track">
-      <div class="animate-fade-in">
+      <div>
         <!-- 顶部：基本信息 -->
-        <div class="mb-4 rounded-md border border-default bg-surface p-5 shadow-sm">
+        <div class="card mb-4 p-5">
           <h1 class="text-xl font-semibold text-primary">
             {{ track.title || "（无标题）" }}
           </h1>
@@ -78,7 +72,7 @@
         </div>
 
         <!-- tab 内容（M6-B MetaTab / M6-C LyricsTab，defineAsyncComponent 动态加载） -->
-        <div class="animate-fade-in">
+        <div>
           <component
             :is="activeTab.component"
             :track-id="trackId"
@@ -87,27 +81,23 @@
 
         <!-- 底部：进入逐字编辑器入口 -->
         <div class="mt-6 flex items-center justify-end gap-3 border-t border-default pt-4">
-          <button
-            class="rounded-md bg-accent-subtle px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent hover:text-surface"
-            @click="goLyricsEditor"
-          >
+          <BaseButton variant="secondary" @click="goLyricsEditor">
             进入逐字编辑器 →
-          </button>
+          </BaseButton>
         </div>
       </div>
     </template>
 
     <!-- id 不存在（已尝试加载但 track 仍为 null） -->
-    <div v-else class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-else class="card p-8 text-center">
       <p class="text-sm text-secondary">
         未找到该 track（id: <span class="font-mono text-tertiary">{{ trackId }}</span>）
       </p>
-      <button
-        class="mt-3 rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="router.push('/library')"
-      >
-        返回曲库
-      </button>
+      <div class="mt-3">
+        <BaseButton variant="secondary" size="sm" @click="router.push('/library')">
+          返回曲库
+        </BaseButton>
+      </div>
     </div>
   </div>
 </template>
@@ -117,6 +107,7 @@ import type { Component } from "vue"
 import type { TrackItem } from "@/apis/library"
 import { fetchTrackById } from "@/apis/library"
 import { usePlayerStore } from "@/stores/player"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import AudioPlayer from "@/components/player/AudioPlayer.vue"
 
 const MetaTab = defineAsyncComponent(() => import("@/components/meta/MetaTab.vue"))

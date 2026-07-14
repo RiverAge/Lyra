@@ -3,30 +3,36 @@
     <!-- Header -->
     <header class="border-b border-default bg-surface px-6 py-4">
       <div class="mx-auto flex max-w-6xl items-center justify-between">
-        <RouterLink to="/" class="text-xl font-semibold text-primary">
-          Lyra
+        <RouterLink to="/" class="flex items-center gap-2">
+          <img src="/favicon.svg" alt="Lyra" class="h-6 w-6">
+          <span class="text-xl font-semibold text-primary">Lyra</span>
         </RouterLink>
-        <div class="flex items-center gap-4">
-          <!-- 主题切换占位 -->
-          <button
-            class="rounded-md border border-default px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
+        <div class="flex items-center gap-2">
+          <BaseButton
+            variant="ghost"
+            size="sm"
             @click="appStore.toggleTheme"
           >
             {{ themeLabel }}
-          </button>
-          <button
-            class="rounded-md border border-default px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
+          </BaseButton>
+          <BaseButton
+            variant="ghost"
+            size="sm"
             @click="goSettings"
           >
             设置
-          </button>
+          </BaseButton>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
     <main class="flex-1">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </RouterView>
     </main>
 
     <!-- Footer -->
@@ -40,6 +46,7 @@
 
 <script setup lang="ts">
 import { useAppStore } from "@/stores/app"
+import BaseButton from "@/components/ui/BaseButton.vue"
 
 const appStore = useAppStore()
 appStore.initTheme()

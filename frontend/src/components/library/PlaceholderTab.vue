@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-md border border-dashed border-default bg-subtle p-8 text-center animate-fade-in">
+  <div class="rounded-md border border-dashed border-default bg-subtle p-8 text-center">
     <p class="mb-1 text-sm font-medium text-secondary">
       该模块尚未加载
     </p>

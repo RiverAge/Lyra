@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <div class="card p-4">
     <!-- 当前 track 信息 -->
     <div class="mb-3 flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">

@@ -1,5 +1,5 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between gap-2">
       <h3 class="text-base font-medium text-primary">
         Span 时间轴

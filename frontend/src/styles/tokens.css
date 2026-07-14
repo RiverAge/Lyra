@@ -8,23 +8,25 @@
 
 /* ---- 亮/暗主题变量根定义 ---- */
 :root[data-theme="light"] {
-  --theme-bg-base: #ffffff;
-  --theme-bg-surface: #ffffff;
-  --theme-bg-subtle: #f7f7f8;
-  --theme-bg-hover: #f0f0f2;
-  --theme-border-default: #e5e5e7;
-  --theme-border-subtle: #f0f0f2;
+  --theme-bg-base: #fafafa;        /* 浅灰底，卡片浮起 */
+  --theme-bg-surface: #ffffff;     /* 纯白卡片 */
+  --theme-bg-subtle: #f4f4f5;      /* 表头/分页栏 */
+  --theme-bg-hover: #f4f4f5;
+  --theme-border-default: rgba(0, 0, 0, 0.06);  /* 极轻半透明 */
+  --theme-border-subtle: rgba(0, 0, 0, 0.04);
   --theme-text-primary: #1d1d1f;
   --theme-text-secondary: #6e6e73;
   --theme-text-tertiary: #a1a1a6;
   --theme-accent: #5b8def;
   --theme-accent-hover: #4a7fd9;
+  --theme-accent-pressed: #3d6bc7;
   --theme-accent-subtle: #eaf1ff;
   --theme-success: #34c759;
   --theme-warning: #ff9500;
   --theme-danger: #ff3b30;
   --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --theme-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 :root[data-theme="dark"] {
@@ -32,40 +34,44 @@
   --theme-bg-surface: #141414;
   --theme-bg-subtle: #1c1c1e;
   --theme-bg-hover: #262629;
-  --theme-border-default: #2a2a2d;
-  --theme-border-subtle: #1f1f22;
+  --theme-border-default: rgba(255, 255, 255, 0.08);
+  --theme-border-subtle: rgba(255, 255, 255, 0.05);
   --theme-text-primary: #f5f5f7;
   --theme-text-secondary: #a1a1a6;
   --theme-text-tertiary: #6e6e73;
   --theme-accent: #5b8def;
   --theme-accent-hover: #6b9bf2;
+  --theme-accent-pressed: #3d6bc7;
   --theme-accent-subtle: #1a2536;
   --theme-success: #30d158;
   --theme-warning: #ff9f0a;
   --theme-danger: #ff453a;
   --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --theme-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 /* 默认 light（未设置 data-theme 时兜底） */
 :root:not([data-theme]) {
-  --theme-bg-base: #ffffff;
+  --theme-bg-base: #fafafa;
   --theme-bg-surface: #ffffff;
-  --theme-bg-subtle: #f7f7f8;
-  --theme-bg-hover: #f0f0f2;
-  --theme-border-default: #e5e5e7;
-  --theme-border-subtle: #f0f0f2;
+  --theme-bg-subtle: #f4f4f5;
+  --theme-bg-hover: #f4f4f5;
+  --theme-border-default: rgba(0, 0, 0, 0.06);
+  --theme-border-subtle: rgba(0, 0, 0, 0.04);
   --theme-text-primary: #1d1d1f;
   --theme-text-secondary: #6e6e73;
   --theme-text-tertiary: #a1a1a6;
   --theme-accent: #5b8def;
   --theme-accent-hover: #4a7fd9;
+  --theme-accent-pressed: #3d6bc7;
   --theme-accent-subtle: #eaf1ff;
   --theme-success: #34c759;
   --theme-warning: #ff9500;
   --theme-danger: #ff3b30;
   --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --theme-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 /* ---- Tailwind v4 @theme 块：注册 token → 自动生成工具类 ---- */
@@ -82,6 +88,7 @@
   --color-text-tertiary: var(--theme-text-tertiary);
   --color-accent: var(--theme-accent);
   --color-accent-hover: var(--theme-accent-hover);
+  --color-accent-pressed: var(--theme-accent-pressed);
   --color-accent-subtle: var(--theme-accent-subtle);
   --color-success: var(--theme-success);
   --color-warning: var(--theme-warning);
@@ -90,9 +97,10 @@
   /* 阴影 */
   --shadow-sm: var(--theme-shadow-sm);
   --shadow-md: var(--theme-shadow-md);
+  --shadow-card: var(--theme-shadow-card);
 
-  /* 字体（从 tailwind.config.js 迁移） */
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 字体（Inter 英文 + Noto Sans SC 中文，SJTU 镜像加载） */
+  --font-sans: "Inter", "Noto Sans SC", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   /* 字号（固定 px，不用 rem/vw） */
@@ -116,19 +124,12 @@
   --radius-md: 8px;
   --radius-full: 9999px;
 
-  /* 动画时长与曲线 */
-  --animate-duration-fade: 150ms;
-  --animate-duration-fade-out: 100ms;
+  /* 动画时长与曲线（精简：只留 slide-up + progress） */
   --animate-duration-slide: 200ms;
-  --animate-duration-scale: 150ms;
   --animate-duration-progress: 300ms;
 
   /* 标准动画（keyframes 定义在底部） */
-  --animate-fade-in: fade-in var(--animate-duration-fade) ease-out forwards;
-  --animate-fade-out: fade-out var(--animate-duration-fade-out) ease-in forwards;
   --animate-slide-up: slide-up var(--animate-duration-slide) cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  --animate-scale-in: scale-in var(--animate-duration-scale) ease-out forwards;
-  --animate-slide-down: slide-down var(--animate-duration-slide) cubic-bezier(0.16, 1, 0.3, 1) forwards;
   --animate-progress: progress var(--animate-duration-progress) ease-out forwards;
 }
 
@@ -141,6 +142,8 @@ html {
   background-color: var(--theme-bg-base);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Inter 字形优化：替代数字、斜杠零、序数、样式集、表格数字 */
+  font-feature-settings: "cv02", "cv05", "cv11", "ss01", "tnum";
 }
 
 /* ---- 无障碍：prefers-reduced-motion 关闭动画 ---- */
@@ -154,51 +157,48 @@ html {
   }
 }
 
-/* ---- @keyframes 定义（只动 transform/opacity，progress 除外） ---- */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fade-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
+/* ---- 组件层：卡片工具类（去豆腐块，靠底色差+极轻边框+双层细阴影分层） ---- */
+@layer components {
+  .card {
+    background-color: var(--color-bg-surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--theme-border-default);
+    box-shadow: var(--shadow-card);
   }
 }
 
+/* ---- 工具层：字体工程化（照搬 camping 范式） ---- */
+@layer utilities {
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  .font-data-code {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ---- 页面切换动画（0.18s 快曲线，照搬 camping） ---- */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* ---- @keyframes 定义（精简后只留 slide-up + progress） ---- */
 @keyframes slide-up {
   from {
     opacity: 0;
     transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slide-down {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
   }
   to {
     opacity: 1;

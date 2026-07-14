@@ -1,12 +1,9 @@
 <template>
   <div class="mx-auto max-w-6xl px-6 py-6">
     <!-- 返回链接 -->
-    <button
-      class="mb-4 text-xs text-secondary transition-colors hover:text-primary"
-      @click="router.back()"
-    >
+    <BaseButton variant="ghost" size="sm" @click="router.back()">
       ← 返回
-    </button>
+    </BaseButton>
 
     <!-- 顶部：trackId + source 选择器 + 全量保存 -->
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -30,44 +27,42 @@
           <option value="netease">netease</option>
           <option value="qq">qq</option>
         </select>
-        <button
-          class="rounded-sm bg-success px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        <BaseButton
+          variant="primary"
+          size="sm"
           :disabled="store.saving || !store.doc"
           @click="onSave"
         >
           {{ store.saving ? "保存中..." : "全量保存" }}
-        </button>
+        </BaseButton>
       </div>
     </div>
 
     <!-- 缺少 track id -->
-    <div v-if="!trackId" class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-if="!trackId" class="card p-8 text-center">
       <p class="text-sm text-secondary">
         缺少 track id
       </p>
     </div>
 
     <!-- 加载中 -->
-    <div v-else-if="store.loading" class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-else-if="store.loading" class="card p-8 text-center">
       <p class="text-sm text-secondary">
         正在加载歌词文档…
       </p>
     </div>
 
     <!-- 加载失败 -->
-    <div v-else-if="store.loadError" class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-else-if="store.loadError" class="card p-8 text-center">
       <p class="mb-2 text-sm font-medium text-danger">
         加载失败
       </p>
       <p class="mb-3 text-xs text-secondary">
         {{ store.loadError }}
       </p>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="reload"
-      >
+      <BaseButton variant="secondary" size="sm" @click="reload">
         重试
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 主布局：波形 + 时间轴 + 编辑面板 -->
@@ -92,7 +87,7 @@
     </div>
 
     <!-- 文档为空（无行） -->
-    <div v-else class="rounded-md border border-default bg-surface p-8 text-center shadow-sm">
+    <div v-else class="card p-8 text-center">
       <p class="text-sm text-secondary">
         该 source 无歌词文档
       </p>
@@ -113,6 +108,7 @@ import type { EditorSource } from "@/apis/editor"
 import WaveformView from "@/components/editor/WaveformView.vue"
 import SpanEditor from "@/components/editor/SpanEditor.vue"
 import SpanTimeline from "@/components/editor/SpanTimeline.vue"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import { useEditorStore } from "@/stores/editor"
 
 /**

@@ -1,26 +1,25 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between">
       <h3 class="text-base font-semibold text-primary">
         对比 & 写入
       </h3>
       <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="rounded-md border border-default bg-base px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover disabled:opacity-50"
+        <BaseButton
+          variant="secondary"
           :disabled="diffLoading || !hasFields"
           @click="onCompute"
         >
           {{ diffLoading ? "对比中…" : "对比 before/after" }}
-        </button>
-        <button
-          type="button"
-          class="rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          danger
           :disabled="!canWrite"
           @click="showConfirm = true"
         >
           写入标签
-        </button>
+        </BaseButton>
       </div>
     </header>
 
@@ -105,7 +104,7 @@
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
         @click.self="showConfirm = false"
       >
-        <div class="w-full max-w-md rounded-md border border-default bg-surface p-5 shadow-md">
+        <div class="card max-w-md w-full p-5 shadow-md">
           <h4 class="mb-2 text-base font-semibold text-primary">
             确认写入标签？
           </h4>
@@ -122,22 +121,21 @@
             {{ writeError }}
           </div>
           <div class="flex justify-end gap-2">
-            <button
-              type="button"
-              class="rounded-md border border-default bg-base px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
+            <BaseButton
+              variant="secondary"
               :disabled="writeLoading"
               @click="showConfirm = false"
             >
               取消
-            </button>
-            <button
-              type="button"
-              class="rounded-md bg-danger px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+            </BaseButton>
+            <BaseButton
+              variant="primary"
+              danger
               :disabled="writeLoading"
               @click="onWrite"
             >
               {{ writeLoading ? "写入中…" : "确认写入" }}
-            </button>
+            </BaseButton>
           </div>
         </div>
       </div>
@@ -147,6 +145,7 @@
 
 <script setup lang="ts">
 import { useMetaStore } from "@/stores/meta"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import type { AuthoritativeFields } from "@/apis/meta"
 
 const props = defineProps<{

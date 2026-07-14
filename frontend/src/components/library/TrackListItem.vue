@@ -3,6 +3,23 @@
     class="group cursor-pointer border-b border-subtle transition-colors hover:bg-hover"
     @click="handleClick"
   >
+    <td class="px-3 py-2 text-primary">
+      <img
+        v-if="track.has_cover"
+        :src="`/api/library/${track.id}/artwork`"
+        :alt="track.title"
+        loading="lazy"
+        class="h-8 w-8 rounded-sm object-cover"
+      >
+      <div
+        v-else
+        class="flex h-8 w-8 items-center justify-center rounded-sm bg-subtle text-tertiary"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6 2v9.5a2 2 0 1 1-1-1.73V4l5-1v5.5a2 2 0 1 1-1-1.73V2z" />
+        </svg>
+      </div>
+    </td>
     <td class="px-3 py-2.5 text-sm text-primary">
       <span class="line-clamp-1">{{ track.title || "（无标题）" }}</span>
     </td>

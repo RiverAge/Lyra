@@ -1,17 +1,18 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between gap-2">
       <h3 class="text-base font-medium text-primary">
         波形
       </h3>
       <div class="flex items-center gap-2">
-        <button
-          class="rounded-sm bg-accent px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        <BaseButton
+          variant="primary"
+          size="sm"
           :disabled="!ready && !decodeFailed"
           @click="onPlayPause"
         >
           {{ playing ? "暂停" : ready ? "播放" : "加载中" }}
-        </button>
+        </BaseButton>
         <span class="font-mono text-xs text-secondary">
           {{ currentTimeLabel }}
         </span>
@@ -36,6 +37,7 @@
 <script setup lang="ts">
 import WaveSurfer from "wavesurfer.js"
 import { formatTime } from "@/apis/editor"
+import BaseButton from "@/components/ui/BaseButton.vue"
 
 /**
  * 波形组件（wavesurfer.js）

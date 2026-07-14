@@ -1,5 +1,5 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between">
       <h3 class="text-base font-semibold text-primary">
         Apple 元数据
@@ -34,14 +34,13 @@
           :disabled="appleLoading"
         >
       </label>
-      <button
-        type="button"
-        class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+      <BaseButton
+        variant="primary"
         :disabled="appleLoading || !trackId"
         @click="onFetch"
       >
         {{ appleLoading ? "拉取中…" : "拉取 Apple 元数据" }}
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 错误提示 -->
@@ -110,6 +109,7 @@
 
 <script setup lang="ts">
 import { useMetaStore } from "@/stores/meta"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import type { AuthoritativeFields } from "@/apis/meta"
 
 const props = defineProps<{

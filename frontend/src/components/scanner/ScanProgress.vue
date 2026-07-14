@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-md border border-default bg-surface p-4 shadow-sm animate-fade-in">
+  <div class="card p-4">
     <div class="mb-3 flex items-center justify-between gap-3">
       <div class="flex items-center gap-2">
         <h3 class="text-sm font-semibold text-primary">
@@ -12,14 +12,15 @@
           {{ stateLabel }}
         </span>
       </div>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+      <BaseButton
+        variant="primary"
+        size="sm"
         :disabled="scannerStore.triggering || scannerStore.isScanning"
         :title="scannerStore.isScanning ? '扫描进行中' : '触发扫描'"
         @click="onTrigger"
       >
         {{ scannerStore.triggering ? "触发中…" : "触发扫描" }}
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 进度数值 -->
@@ -74,6 +75,7 @@
 
 <script setup lang="ts">
 import { useScannerStore } from "@/stores/scanner"
+import BaseButton from "@/components/ui/BaseButton.vue"
 
 /**
  * 扫描进度组件

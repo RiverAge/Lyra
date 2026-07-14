@@ -1,10 +1,11 @@
 <template>
-  <div class="overflow-hidden rounded-md border border-default bg-surface shadow-sm animate-fade-in">
+  <div class="card overflow-hidden">
     <!-- 表头 -->
     <div class="border-b border-default bg-subtle">
       <table class="w-full table-fixed">
         <colgroup>
-          <col class="w-[34%]">
+          <col class="w-[4%]">
+          <col class="w-[30%]">
           <col class="w-[22%]">
           <col class="w-[22%]">
           <col class="w-[10%]">
@@ -13,6 +14,7 @@
         </colgroup>
         <thead>
           <tr class="text-xs font-medium text-tertiary uppercase">
+            <th class="px-3 py-2" />
             <th class="px-3 py-2 text-left">
               标题
             </th>
@@ -41,6 +43,7 @@
         :key="i"
         class="flex items-center px-3 py-2.5"
       >
+        <div class="mr-3 h-8 w-8 animate-pulse rounded-sm bg-hover" />
         <div class="h-3 flex-1 animate-pulse rounded-sm bg-hover" />
         <div class="ml-3 h-3 w-20 animate-pulse rounded-sm bg-hover" />
       </div>
@@ -64,19 +67,17 @@
       <p class="mb-3 text-xs text-secondary">
         {{ error }}
       </p>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="$emit('retry')"
-      >
+      <BaseButton variant="secondary" size="sm" @click="$emit('retry')">
         重试
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 数据列表 -->
     <div v-else>
       <table class="w-full table-fixed">
         <colgroup>
-          <col class="w-[34%]">
+          <col class="w-[4%]">
+          <col class="w-[30%]">
           <col class="w-[22%]">
           <col class="w-[22%]">
           <col class="w-[10%]">
@@ -103,21 +104,23 @@
         第 {{ page }} / {{ totalPages }} 页 · 共 {{ total }} 首
       </span>
       <div class="flex items-center gap-2">
-        <button
-          class="rounded-md border border-default px-2.5 py-1 text-xs text-primary transition-colors hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+        <BaseButton
+          variant="ghost"
+          size="sm"
           :disabled="page <= 1"
           @click="$emit('prev')"
         >
           上一页
-        </button>
+        </BaseButton>
         <span class="font-mono text-xs text-secondary">{{ page }}</span>
-        <button
-          class="rounded-md border border-default px-2.5 py-1 text-xs text-primary transition-colors hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40"
+        <BaseButton
+          variant="ghost"
+          size="sm"
           :disabled="page >= totalPages"
           @click="$emit('next')"
         >
           下一页
-        </button>
+        </BaseButton>
       </div>
     </div>
   </div>
@@ -125,6 +128,7 @@
 
 <script setup lang="ts">
 import type { TrackItem } from "@/apis/library"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import TrackListItem from "@/components/library/TrackListItem.vue"
 
 /**

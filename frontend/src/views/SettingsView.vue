@@ -1,14 +1,11 @@
 <template>
-  <div class="mx-auto max-w-3xl px-6 py-6 animate-fade-in">
+  <div class="mx-auto max-w-3xl px-6 py-6">
     <!-- 页头 -->
     <div class="mb-6">
-      <button
-        class="mb-3 text-xs text-secondary transition-colors hover:text-primary"
-        @click="router.push('/library')"
-      >
+      <BaseButton variant="ghost" size="sm" @click="router.push('/library')">
         ← 返回曲库
-      </button>
-      <h1 class="text-xl font-semibold text-primary">
+      </BaseButton>
+      <h1 class="mt-3 text-xl font-semibold text-primary">
         设置
       </h1>
       <p class="mt-1 text-xs text-secondary">
@@ -19,7 +16,7 @@
     <!-- 加载中 -->
     <div
       v-if="settingsStore.loading"
-      class="rounded-md border border-default bg-surface p-8 text-center shadow-sm"
+      class="card p-8 text-center"
     >
       <p class="text-sm text-secondary">
         正在加载配置…
@@ -29,7 +26,7 @@
     <!-- 加载失败 -->
     <div
       v-else-if="settingsStore.error && !settingsStore.settings"
-      class="rounded-md border border-default bg-surface p-8 text-center shadow-sm"
+      class="card p-8 text-center"
     >
       <p class="mb-2 text-sm font-medium text-danger">
         加载失败
@@ -37,18 +34,15 @@
       <p class="mb-3 text-xs text-secondary">
         {{ settingsStore.error }}
       </p>
-      <button
-        class="rounded-md border border-default px-3 py-1.5 text-xs text-primary transition-colors hover:bg-hover"
-        @click="settingsStore.load()"
-      >
+      <BaseButton variant="secondary" size="sm" @click="settingsStore.load()">
         重试
-      </button>
+      </BaseButton>
     </div>
 
     <!-- 主体：配置表单 -->
     <template v-else>
       <!-- Credits 代理配置 -->
-      <section class="mb-6 rounded-md border border-default bg-surface p-5 shadow-sm">
+      <section class="card mb-6 p-5">
         <header class="mb-4">
           <h2 class="text-base font-semibold text-primary">
             Credits 爬取代理
@@ -80,23 +74,21 @@
 
         <!-- 操作区 -->
         <div class="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+          <BaseButton
+            variant="primary"
             :disabled="settingsStore.saving"
             @click="onSave"
           >
             {{ settingsStore.saving ? "保存中…" : "保存" }}
-          </button>
-          <button
+          </BaseButton>
+          <BaseButton
             v-if="hasChange"
-            type="button"
-            class="rounded-md border border-default px-3 py-2 text-xs text-secondary transition-colors hover:bg-hover"
+            variant="secondary"
             :disabled="settingsStore.saving"
             @click="resetForm"
           >
             撤销修改
-          </button>
+          </BaseButton>
         </div>
 
         <!-- 成功/错误提示 -->
@@ -115,7 +107,7 @@
       </section>
 
       <!-- 直连说明 -->
-      <section class="rounded-md border border-default bg-surface p-5 shadow-sm">
+      <section class="card p-5">
         <h2 class="mb-2 text-base font-semibold text-primary">
           关于直连
         </h2>
@@ -132,6 +124,7 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from "@/stores/settings"
+import BaseButton from "@/components/ui/BaseButton.vue"
 
 /**
  * 设置页

@@ -1,6 +1,6 @@
 <template>
   <div class="flex flex-col gap-4">
-    <header class="rounded-md border border-default bg-surface p-4 shadow-sm">
+    <header class="card p-4">
       <h2 class="text-lg font-semibold text-primary">
         元数据
       </h2>

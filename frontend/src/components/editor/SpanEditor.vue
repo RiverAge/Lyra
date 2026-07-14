@@ -1,5 +1,5 @@
 <template>
-  <section class="rounded-md border border-default bg-surface p-4 shadow-sm">
+  <section class="card p-4">
     <header class="mb-3 flex items-center justify-between gap-2">
       <h3 class="text-base font-medium text-primary">
         编辑面板
@@ -53,13 +53,14 @@
 
       <!-- 写回按钮 -->
       <div class="flex items-center gap-2">
-        <button
-          class="rounded-sm bg-accent px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+        <BaseButton
+          variant="primary"
+          size="sm"
           :disabled="store.patching || !canSubmit"
           @click="onSubmit"
         >
           {{ store.patching ? "写回中..." : "写回此项" }}
-        </button>
+        </BaseButton>
         <span v-if="store.lastPatchOk" class="text-xs text-success">
           已写回
         </span>
@@ -76,6 +77,7 @@
 <script setup lang="ts">
 import { formatTime } from "@/apis/editor"
 import { useEditorStore } from "@/stores/editor"
+import BaseButton from "@/components/ui/BaseButton.vue"
 
 /**
  * Span 编辑面板

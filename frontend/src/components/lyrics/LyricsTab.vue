@@ -8,12 +8,9 @@
 
     <!-- 底部：进入逐字编辑器 -->
     <div class="flex items-center justify-end">
-      <button
-        class="rounded-sm border border-accent px-4 py-2 text-sm text-accent transition-colors hover:bg-accent-subtle"
-        @click="goEditor"
-      >
+      <BaseButton variant="secondary" @click="goEditor">
         进入逐字编辑器
-      </button>
+      </BaseButton>
     </div>
   </div>
 </template>
@@ -21,6 +18,7 @@
 <script setup lang="ts">
 import MatchPanel from "./MatchPanel.vue"
 import SidecarList from "./SidecarList.vue"
+import BaseButton from "@/components/ui/BaseButton.vue"
 import { useLyricsStore } from "@/stores/lyrics"
 
 /**
