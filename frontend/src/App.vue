@@ -3,11 +3,10 @@
     <!-- Header -->
     <header class="border-b border-default bg-surface px-6 py-4">
       <div class="mx-auto flex max-w-6xl items-center justify-between">
-        <h1 class="text-xl font-semibold text-primary">
+        <RouterLink to="/" class="text-xl font-semibold text-primary">
           Lyra
-        </h1>
+        </RouterLink>
         <div class="flex items-center gap-4">
-          <span class="text-sm text-secondary">前端骨架已就绪</span>
           <!-- 主题切换占位 -->
           <button
             class="rounded-md border border-default px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
@@ -15,32 +14,19 @@
           >
             {{ themeLabel }}
           </button>
+          <button
+            class="rounded-md border border-default px-3 py-1.5 text-sm text-primary transition-colors hover:bg-hover"
+            @click="goSettings"
+          >
+            设置
+          </button>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
-    <main class="flex flex-1 items-center justify-center">
-      <div class="text-center">
-        <!-- 占位验证 div：验证 tokens.css 是否生效 -->
-        <div class="mb-6 rounded-md bg-accent-subtle p-8 shadow-sm">
-          <p class="mb-2 text-lg font-semibold text-primary">
-            tokens.css 验证区
-          </p>
-          <p class="text-sm text-secondary">
-            此区块使用 bg-accent-subtle + shadow-sm（语义 token 类名）
-          </p>
-        </div>
-
-        <h2 class="mb-2 text-lg font-medium text-primary">
-          全局布局壳已渲染
-        </h2>
-        <p class="text-sm text-secondary">
-          数据主题：<span class="font-mono text-accent">{{ appStore.theme }}</span>
-        </p>
-
-        <RouterView />
-      </div>
+    <main class="flex-1">
+      <RouterView />
     </main>
 
     <!-- Footer -->
@@ -58,9 +44,15 @@ import { useAppStore } from "@/stores/app"
 const appStore = useAppStore()
 appStore.initTheme()
 
+const router = useRouter()
+
 const themeLabel = computed(() =>
   appStore.theme === "light" ? "🌙 暗色" : "☀️ 亮色"
 )
+
+function goSettings(): void {
+  void router.push("/settings")
+}
 </script>
 
 <style scoped>
