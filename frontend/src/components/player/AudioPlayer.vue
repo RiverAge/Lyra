@@ -240,7 +240,13 @@ function onEnded(): void {
 function onError(e: Event): void {
   const el = e.target as HTMLAudioElement
   const code = el.error?.code
-  error.value = `音频加载失败${code ? `（code ${code}）` : ""}`
+  // MediaError code 3 = MEDIA_ERR_DECODE, code 4 = MEDIA_ERR_SRC_NOT_SUPPORTED
+  // 两者常见于浏览器不支持该音频编码（如 ALAC），后端已尝试转码但仍可能失败
+  const hint =
+    code === 3 || code === 4
+      ? "（浏览器可能不支持此音频格式，如 ALAC；后端已尝试转码，请确认 ffmpeg 可用）"
+      : ""
+  error.value = `音频加载失败${code ? `（code ${code}）` : ""}${hint}`
 }
 
 function seekFromEvent(e: MouseEvent): void {

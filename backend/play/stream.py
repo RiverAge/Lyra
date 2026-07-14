@@ -1,6 +1,10 @@
-"""Lyra 播放层——静态音频流 + HTTP Range 支持。
+"""Lyra 播放层——静态音频流 + HTTP Range 支持 + 实时转码。
 
 端点：GET /api/play/{track_id} 和 HEAD /api/play/{track_id}
+
+分流策略：
+- 浏览器原生可解码 codec（mp3/flac/aac/opus/vorbis/wav）→ Range 直传（不变）
+- 不可解码 codec（如 alac）→ ffmpeg 实时转码为 Opus in Ogg 流式输出
 """
 
 from __future__ import annotations
@@ -14,6 +18,12 @@ from starlette.responses import StreamingResponse
 
 from backend.config import get_settings
 from backend.index.store import get_store
+from backend.play.transcode import (
+    NATIVE_CODECS,
+    TRANSCODE_CONTENT_TYPE,
+    is_ffmpeg_available,
+    transcode_stream,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +126,11 @@ def _file_streamer(file_path: Path, start: int, end: int) -> Generator[bytes, No
             yield data
 
 
-async def _resolve_track(track_id: str) -> tuple[Path, int, str]:
+async def _resolve_track(track_id: str) -> tuple[Path, int, str, str | None]:
     """解析 track_id 并验证路径安全。
 
     Returns:
-        (file_path, file_size, content_type)
+        (file_path, file_size, content_type, codec)
 
     Raises:
         HTTPException:
@@ -164,9 +174,10 @@ async def _resolve_track(track_id: str) -> tuple[Path, int, str]:
         raise HTTPException(status_code=404, detail="Track not found")
 
     file_size = track_path.stat().st_size
-    content_type = _get_content_type(row["codec"])
+    codec = row["codec"]
+    content_type = _get_content_type(codec)
 
-    return track_path, file_size, content_type
+    return track_path, file_size, content_type, codec
 
 
 # ---------------------------------------------------------------------------
@@ -176,14 +187,33 @@ async def _resolve_track(track_id: str) -> tuple[Path, int, str]:
 
 @play_router.get("/play/{track_id}")
 async def stream_track(request: Request, track_id: str) -> Response:
-    """静态音频流端点。
+    """音频流端点——按 codec 分流。
 
-    - 无 Range → 200 + 完整文件流
-    - 有 Range → 206 + 指定字节块
+    - 浏览器原生可解码 codec → 无 Range: 200 + 完整文件流; 有 Range: 206
+    - 不可解码 codec（如 alac）→ ffmpeg 实时转码为 Opus in Ogg，200 流式输出
     - HEAD 由 `stream_track_head` 处理
     """
-    track_path, file_size, content_type = await _resolve_track(track_id)
+    track_path, file_size, content_type, codec = await _resolve_track(track_id)
 
+    # ---- 转码分流 ----
+    if codec is not None and codec not in NATIVE_CODECS:
+        # 不可解码 → 实时转码
+        if not is_ffmpeg_available():
+            raise HTTPException(
+                status_code=503,
+                detail=f"ffmpeg not available, cannot transcode {codec}",
+            )
+
+        return StreamingResponse(
+            transcode_stream(track_path),
+            status_code=200,
+            media_type=TRANSCODE_CONTENT_TYPE,
+            headers={
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    # ---- 原生可解码 → Range 直传（逻辑不变） ----
     range_header = request.headers.get("range")
 
     if range_header:
@@ -218,9 +248,29 @@ async def stream_track(request: Request, track_id: str) -> Response:
 
 @play_router.head("/play/{track_id}")
 async def stream_track_head(request: Request, track_id: str) -> Response:
-    """HEAD 请求：返回与 GET 相同的 header，不返 body。"""
-    track_path, file_size, content_type = await _resolve_track(track_id)
+    """HEAD 请求：返回与 GET 相同的 header，不返 body。
 
+    转码流无法预知 Content-Length，HEAD 返回 Content-Type + Cache-Control。
+    原生可解码格式保留原有 Range 逻辑。
+    """
+    track_path, file_size, content_type, codec = await _resolve_track(track_id)
+
+    # ---- 转码分流 ----
+    if codec is not None and codec not in NATIVE_CODECS:
+        if not is_ffmpeg_available():
+            raise HTTPException(
+                status_code=503,
+                detail=f"ffmpeg not available, cannot transcode {codec}",
+            )
+        return Response(
+            status_code=200,
+            media_type=TRANSCODE_CONTENT_TYPE,
+            headers={
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    # ---- 原生可解码 → Range 直传 header ----
     range_header = request.headers.get("range")
 
     if range_header:
@@ -244,3 +294,11 @@ async def stream_track_head(request: Request, track_id: str) -> Response:
             "Accept-Ranges": "bytes",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# 转码辅助
+# ---------------------------------------------------------------------------
+# transcode_stream 直接作为 StreamingResponse body_iterator。
+# 客户端断开清理：send OSError → 生成器异常终止 → transcode_stream finally 块
+# → proc.kill()。无需 disconnect 轮询（原 _DisconnectWatcher 已删，见审计 P2-1）。

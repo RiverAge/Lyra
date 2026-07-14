@@ -1,14 +1,17 @@
-"""测试——播放层静态流端点。
+"""测试——播放层静态流端点 + 实时转码。
 
-覆盖 GET /api/play/{track_id} 的静态流 + Range 逻辑，
+覆盖 GET /api/play/{track_id} 的静态流 + Range 逻辑、
+转码分流逻辑、ffmpeg 不可用 503 路径，
 以及 HEAD /api/play/{track_id} 的 header-only 响应。
 
 使用构造的测试文件（非真实音频，因为流端点不关心文件内容，
 只关心字节 range 是否正确。codec 来自 DB 记录而非文件头）。
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -16,6 +19,7 @@ from httpx import ASGITransport, AsyncClient
 
 from backend.index.store import IndexStore, set_store
 from backend.play.stream import play_router
+from backend.play.transcode import reset_ffmpeg_probe, transcode_stream
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,21 +68,21 @@ async def test_play_get_no_range_200(
 ) -> None:
     """无 Range GET 返回 200 + Content-Length + Accept-Ranges + 正确 Content-Type。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
 
     resp = await client.get(f"/api/play/{rowid}")
     assert resp.status_code == 200
-    assert resp.headers["content-type"] == "audio/mp4"
+    assert resp.headers["content-type"] == "audio/mpeg"
     assert resp.headers["content-length"] == "1000"
     assert resp.headers["accept-ranges"] == "bytes"
     assert len(resp.content) == 1000
@@ -89,14 +93,14 @@ async def test_play_get_range_206(
 ) -> None:
     """有 Range GET 返回 206 + Content-Range + 正确字节。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
@@ -108,7 +112,7 @@ async def test_play_get_range_206(
     assert resp.status_code == 206
     assert resp.headers["content-range"] == "bytes 0-99/1000"
     assert resp.headers["content-length"] == "100"
-    assert resp.headers["content-type"] == "audio/mp4"
+    assert resp.headers["content-type"] == "audio/mpeg"
     assert resp.headers["accept-ranges"] == "bytes"
     assert len(resp.content) == 100
     assert resp.content == b"A" * 100
@@ -119,14 +123,14 @@ async def test_play_range_start_open(
 ) -> None:
     """bytes=start- 开区间语法。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
@@ -146,14 +150,14 @@ async def test_play_range_suffix(
 ) -> None:
     """bytes=-suffix 后缀语法。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
@@ -173,14 +177,14 @@ async def test_play_range_out_of_bounds(
 ) -> None:
     """越界 Range 返回 416。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
@@ -205,21 +209,21 @@ async def test_play_head(
 ) -> None:
     """HEAD 返回 header 不返 body。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
 
     resp = await client.head(f"/api/play/{rowid}")
     assert resp.status_code == 200
-    assert resp.headers["content-type"] == "audio/mp4"
+    assert resp.headers["content-type"] == "audio/mpeg"
     assert resp.headers["content-length"] == "1000"
     assert resp.headers["accept-ranges"] == "bytes"
     assert resp.content == b""
@@ -286,20 +290,10 @@ async def test_play_file_not_exists(
 async def test_play_codec_content_type(
     store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
 ) -> None:
-    """不同 codec 字段对应正确的 Content-Type。"""
+    """不同 codec 字段对应正确的 Content-Type（原生可解码格式走直传）。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
 
-    # alac → audio/mp4
-    f_a = tmp_path / "a.m4a"
-    _make_test_file(f_a, size=100)
-    rid1 = await store.insert_track(
-        title="A", artist="A", path=str(f_a).replace("\\", "/"),
-        codec="alac", duration=200000, size=100,
-    )
-    resp = await client.get(f"/api/play/{rid1}")
-    assert resp.headers["content-type"] == "audio/mp4"
-
-    # flac → audio/flac
+    # flac → audio/flac（原生可解码，走直传）
     f_b = tmp_path / "b.flac"
     _make_test_file(f_b, size=100)
     rid2 = await store.insert_track(
@@ -309,7 +303,7 @@ async def test_play_codec_content_type(
     resp = await client.get(f"/api/play/{rid2}")
     assert resp.headers["content-type"] == "audio/flac"
 
-    # mp3 → audio/mpeg
+    # mp3 → audio/mpeg（原生可解码，走直传）
     f_c = tmp_path / "c.mp3"
     _make_test_file(f_c, size=100)
     rid3 = await store.insert_track(
@@ -319,7 +313,7 @@ async def test_play_codec_content_type(
     resp = await client.get(f"/api/play/{rid3}")
     assert resp.headers["content-type"] == "audio/mpeg"
 
-    # None → application/octet-stream
+    # None → application/octet-stream（未知 codec，走直传）
     f_d = tmp_path / "d.unknown"
     _make_test_file(f_d, size=100)
     rid4 = await store.insert_track(
@@ -362,14 +356,14 @@ async def test_play_head_with_range(
 ) -> None:
     """HEAD 请求带 Range 返回 206 header 不返 body。"""
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
-    test_file = tmp_path / "test.m4a"
+    test_file = tmp_path / "test.mp3"
     _make_test_file(test_file, size=1000)
 
     rowid = await store.insert_track(
         title="Test",
         artist="A",
         path=str(test_file).replace("\\", "/"),
-        codec="alac",
+        codec="mp3",
         duration=200000,
         size=1000,
     )
@@ -383,3 +377,396 @@ async def test_play_head_with_range(
     assert resp.headers["content-length"] == "100"
     assert resp.headers["accept-ranges"] == "bytes"
     assert resp.content == b""
+
+
+# ---------------------------------------------------------------------------
+# 转码分流测试
+# ---------------------------------------------------------------------------
+
+
+async def test_play_alac_transcode_content_type(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ALAC track 走转码路径时返回 Content-Type: audio/ogg。
+
+    需要 ffmpeg 可用；不可用时跳过。
+    """
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    # 探测 ffmpeg 是否可用
+    from backend.play.transcode import is_ffmpeg_available
+
+    if not is_ffmpeg_available():
+        pytest.skip("ffmpeg not available — transcoding test requires ffmpeg")
+
+    # 创建一个最小的有效 WAV 文件（ffmpeg 可解码的输入）
+    # 44100 Hz, mono, 16-bit, 0.1 秒 = 4410 samples = 8820 bytes PCM
+    import wave
+
+    wav_path = tmp_path / "test.wav"
+    with wave.open(str(wav_path), "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(44100)
+        # 写入 0.1 秒的静音
+        frames = b"\x00\x00" * 4410
+        wf.writeframes(frames)
+
+    # DB 记录标记为 alac（模拟 ALAC track）
+    rowid = await store.insert_track(
+        title="ALAC Test",
+        artist="A",
+        path=str(wav_path).replace("\\", "/"),
+        codec="alac",
+        duration=100,
+        size=wav_path.stat().st_size,
+    )
+
+    resp = await client.get(f"/api/play/{rowid}")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/ogg"
+    # 转码流不应有 Content-Length（长度不可预知）
+    assert "content-length" not in resp.headers
+    # 转码流不应有 Accept-Ranges（不支持字节 seek）
+    assert "accept-ranges" not in resp.headers
+    # 应有 Cache-Control: no-cache
+    assert resp.headers["cache-control"] == "no-cache"
+    # 应有实际数据（Opus Ogg 头部）
+    assert len(resp.content) > 0
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_alac_ffmpeg_unavailable_503(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ffmpeg 不可用时 ALAC 请求返回 503。"""
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    test_file = tmp_path / "test.m4a"
+    _make_test_file(test_file, size=100)
+
+    rowid = await store.insert_track(
+        title="ALAC No FFmpeg",
+        artist="A",
+        path=str(test_file).replace("\\", "/"),
+        codec="alac",
+        duration=200000,
+        size=100,
+    )
+
+    # mock shutil.which 返回 None（ffmpeg 不可用）
+    with patch("backend.play.transcode.shutil.which", return_value=None):
+        reset_ffmpeg_probe()
+        resp = await client.get(f"/api/play/{rowid}")
+
+    assert resp.status_code == 503
+    assert "ffmpeg not available" in resp.text
+    assert "alac" in resp.text
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_alac_head_ffmpeg_unavailable_503(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ffmpeg 不可用时 HEAD 请求 ALAC 也返回 503。"""
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    test_file = tmp_path / "test.m4a"
+    _make_test_file(test_file, size=100)
+
+    rowid = await store.insert_track(
+        title="ALAC No FFmpeg HEAD",
+        artist="A",
+        path=str(test_file).replace("\\", "/"),
+        codec="alac",
+        duration=200000,
+        size=100,
+    )
+
+    with patch("backend.play.transcode.shutil.which", return_value=None):
+        reset_ffmpeg_probe()
+        resp = await client.head(f"/api/play/{rowid}")
+
+    # HEAD 响应 body 为空，只能通过状态码判定
+    assert resp.status_code == 503
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_alac_head_transcode(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ALAC track HEAD 请求走转码路径时返回 audio/ogg + Cache-Control。"""
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    from backend.play.transcode import is_ffmpeg_available
+
+    if not is_ffmpeg_available():
+        pytest.skip("ffmpeg not available — transcoding test requires ffmpeg")
+
+    import wave
+
+    wav_path = tmp_path / "test.wav"
+    with wave.open(str(wav_path), "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(44100)
+        wf.writeframes(b"\x00\x00" * 4410)
+
+    rowid = await store.insert_track(
+        title="ALAC HEAD Test",
+        artist="A",
+        path=str(wav_path).replace("\\", "/"),
+        codec="alac",
+        duration=100,
+        size=wav_path.stat().st_size,
+    )
+
+    resp = await client.head(f"/api/play/{rowid}")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/ogg"
+    assert resp.headers["cache-control"] == "no-cache"
+    assert resp.content == b""
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_native_codec_unaffected_by_ffmpeg_absence(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ffmpeg 不可用时，原生可解码格式（mp3/flac）仍正常直传，不受影响。"""
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    # mp3 直传
+    f_mp3 = tmp_path / "test.mp3"
+    _make_test_file(f_mp3, size=500)
+    rid_mp3 = await store.insert_track(
+        title="MP3", artist="A", path=str(f_mp3).replace("\\", "/"),
+        codec="mp3", duration=200000, size=500,
+    )
+
+    with patch("backend.play.transcode.shutil.which", return_value=None):
+        reset_ffmpeg_probe()
+        resp = await client.get(f"/api/play/{rid_mp3}")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/mpeg"
+    assert resp.headers["content-length"] == "500"
+    assert resp.headers["accept-ranges"] == "bytes"
+
+    # flac 直传
+    f_flac = tmp_path / "test.flac"
+    _make_test_file(f_flac, size=500)
+    rid_flac = await store.insert_track(
+        title="FLAC", artist="A", path=str(f_flac).replace("\\", "/"),
+        codec="flac", duration=200000, size=500,
+    )
+
+    with patch("backend.play.transcode.shutil.which", return_value=None):
+        reset_ffmpeg_probe()
+        resp = await client.get(f"/api/play/{rid_flac}")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/flac"
+    assert resp.headers["content-length"] == "500"
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_transcode_process_cleanup(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """转码流结束后 ffmpeg 进程被正确清理（不残留僵尸进程）。
+
+    通过 mock transcode_stream 验证流正常结束。
+    """
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    test_file = tmp_path / "test.m4a"
+    _make_test_file(test_file, size=100)
+
+    rowid = await store.insert_track(
+        title="ALAC Cleanup",
+        artist="A",
+        path=str(test_file).replace("\\", "/"),
+        codec="alac",
+        duration=200000,
+        size=100,
+    )
+
+    # mock is_ffmpeg_available 返回 True（跳过 503 检查）
+    # mock transcode_stream 返回有限数据后结束
+    from collections.abc import AsyncGenerator
+
+    async def _fake_stream(file_path: Path) -> AsyncGenerator[bytes, None]:
+        yield b"fake opus data"
+
+    with (
+        patch("backend.play.stream.is_ffmpeg_available", return_value=True),
+        patch("backend.play.stream.transcode_stream", side_effect=_fake_stream),
+    ):
+        resp = await client.get(f"/api/play/{rowid}")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/ogg"
+    assert resp.content == b"fake opus data"
+
+    reset_ffmpeg_probe()
+
+
+# ---------------------------------------------------------------------------
+# 客户端断连清理测试
+# ---------------------------------------------------------------------------
+
+
+class _FakeProc:
+    """模拟 ffmpeg subprocess，用于验证断连时 kill 被调用。"""
+
+    def __init__(self, chunks: list[bytes], block_after: bool = True) -> None:
+        self._chunks = chunks
+        self._block_after = block_after
+        self.killed = False
+        self.waited = False
+        self.returncode: int | None = None
+        self.stdout = _FakeStreamReader(chunks, block_after)
+        self.stderr = _FakeStreamReader([], False)
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+        # 解除 stdout 的阻塞 read
+        self.stdout._unblock()
+
+    async def wait(self) -> int:
+        self.waited = True
+        return self.returncode if self.returncode is not None else 0
+
+
+class _FakeStreamReader:
+    """模拟 asyncio.StreamReader，按 chunks 返回数据，可阻塞。
+
+    对齐真实 StreamReader.read(n=-1) 语义：n 可选，默认读全部。
+    """
+
+    def __init__(self, chunks: list[bytes], block_after: bool) -> None:
+        self._chunks = list(chunks)
+        self._block_after = block_after
+        self._index = 0
+        self._unblock_event = asyncio.Event()
+
+    def _unblock(self) -> None:
+        self._unblock_event.set()
+
+    async def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+        # size > 0: 分块读（stdout 路径）；size <= 0: 读全部（stderr 路径）
+        if size > 0:
+            if self._index < len(self._chunks):
+                chunk = self._chunks[self._index]
+                self._index += 1
+                return chunk
+            if self._block_after:
+                await self._unblock_event.wait()
+                return b""
+            return b""
+        # size <= 0：读全部剩余（stderr read() 无参走此路径）
+        remaining = self._chunks[self._index:]
+        self._index = len(self._chunks)
+        return b"".join(remaining)
+
+
+async def test_play_transcode_killed_on_client_disconnect(
+    store: IndexStore, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """生成器被提前关闭时（客户端断开等价），ffmpeg 进程被 finally kill。
+
+    回归 P2-1：transcode_stream 的 finally 是唯一的清理路径
+    （原 _DisconnectWatcher 已删）。此测试锁住 finally 行为。
+
+    测试策略：不走 HTTP 层（ASGITransport 的客户端断开语义不可靠，
+    可能死锁）。直接对 transcode_stream 生成器做 aclose()，模拟
+    StreamingResponse 在 send OSError 时关闭 body_iterator 的行为。
+    """
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    test_file = tmp_path / "test.m4a"
+    _make_test_file(test_file, size=100)
+
+    # fake proc：yield 一块数据后阻塞（模拟转码进行中，stdout 未 EOF）
+    fake_proc = _FakeProc(chunks=[b"partial opus data"], block_after=True)
+
+    async def _fake_create_subprocess(*args, **kwargs):  # type: ignore[no-untyped-def]
+        # noqa: ARG001
+        return fake_proc
+
+    with patch(
+        "backend.play.transcode.asyncio.create_subprocess_exec",
+        side_effect=_fake_create_subprocess,
+    ):
+        gen = transcode_stream(test_file)
+        first_chunk = await gen.__anext__()
+        assert first_chunk == b"partial opus data"
+        # 第二次 __anext__ 会阻塞（fake proc stdout 阻塞）
+        # 模拟 StreamingResponse 在 send OSError 时关闭生成器
+        await gen.aclose()
+
+    # 生成器被 aclose 关闭 → finally 执行 → kill + wait
+    assert fake_proc.killed, "ffmpeg proc 应被 finally kill"
+    assert fake_proc.waited, "ffmpeg proc 应被 await wait()"
+
+    reset_ffmpeg_probe()
+
+
+async def test_play_transcode_normally_completes_no_kill(
+    store: IndexStore, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """ffmpeg 正常结束时，finally 不调 kill（returncode 非 None），只读 stderr。"""
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    test_file = tmp_path / "test.m4a"
+    _make_test_file(test_file, size=100)
+
+    rowid = await store.insert_track(
+        title="ALAC Normal",
+        artist="A",
+        path=str(test_file).replace("\\", "/"),
+        codec="alac",
+        duration=200000,
+        size=100,
+    )
+
+    # fake proc：yield 数据后 EOF（正常结束），returncode=0
+    fake_proc = _FakeProc(chunks=[b"complete opus data"], block_after=False)
+    fake_proc.returncode = 0
+
+    async def _fake_create_subprocess(*args, **kwargs):  # type: ignore[no-untyped-def]
+        # noqa: ARG001
+        return fake_proc
+
+    with (
+        patch("backend.play.stream.is_ffmpeg_available", return_value=True),
+        patch("backend.play.transcode.asyncio.create_subprocess_exec",
+              side_effect=_fake_create_subprocess),
+    ):
+        app = FastAPI()
+        app.include_router(play_router, prefix="/api")
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            resp = await c.get(f"/api/play/{rowid}")
+
+    assert resp.status_code == 200
+    assert resp.content == b"complete opus data"
+    # 正常结束：returncode 非 None，不调 kill
+    assert not fake_proc.killed, "正常结束不应调 kill"
+
+    reset_ffmpeg_probe()

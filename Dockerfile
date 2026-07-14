@@ -25,6 +25,11 @@ RUN pnpm build
 # python:3.12-slim 与 AGENTS.md §3 的 3.12 边界一致
 FROM python:3.12-slim AS runtime
 
+# ffmpeg：ALAC 等浏览器不可解码的 codec 需实时转码为 Opus（见 backend/play/transcode.py）
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+
 # 容器内先装 uvicorn（requirements.txt 不含它，避免本机 dev 装多余的 server）
 # 实际上 uvicorn[standard] 在 requirements.txt 里——此处独立装一次保证命令行可用
 RUN pip install --no-cache-dir uvicorn[standard]>=0.34.0
