@@ -16,6 +16,7 @@
           variant="primary"
           danger
           :disabled="!canWrite"
+          title="请先对比 before/after"
           @click="showConfirm = true"
         >
           写入标签
@@ -53,7 +54,15 @@
       v-if="!hasFields && !diffResult"
       class="text-sm text-tertiary"
     >
-      先在上方 Apple / Credits 区勾选要写入的权威字段，再点「对比 before/after」生成差异。
+      先在上方勾选要写入的权威字段，再点「对比 before/after」生成差异。
+    </p>
+
+    <!-- 提示：已选字段但未对比 -->
+    <p
+      v-else-if="hasFields && !diffResult"
+      class="text-sm text-tertiary"
+    >
+      请先点击「对比 before/after」查看变更，确认后再写入。
     </p>
 
     <!-- diff 表 -->
@@ -111,7 +120,7 @@
           <p class="mb-4 text-sm text-secondary">
             写操作不可逆（无 Ctrl+Z，无自动备份）。将向 track
             <span class="font-mono text-primary">{{ trackId }}</span>
-            写入 <span class="text-primary">{{ fieldCount }}</span> 个字段的权威值。
+            写入 <span class="text-primary">{{ diffSummaryText }}</span>。
             请确认上方对比表无误后再继续。
           </p>
           <div
@@ -150,7 +159,7 @@ import type { AuthoritativeFields } from "@/apis/meta"
 
 const props = defineProps<{
   trackId: string
-  /** 当前选定的权威字段（来自 Apple/Credits 勾选，由 MetaTab 聚合后传入） */
+  /** 当前选定的权威字段（来自勾选，由 MetaTab 聚合后传入） */
   fields: AuthoritativeFields
 }>()
 
@@ -211,6 +220,31 @@ const diffRows = computed<DiffRow[]>(() => {
     const a = after[field]
     return { field, before: b, after: a, kind: normalizeKind(undefined, b, a) }
   })
+})
+
+/** diff 摘要统计（用于确认框文案） */
+const diffSummary = computed(() => {
+  const diffs = diffResult.value?.diffs
+  if (!diffs || diffs.length === 0) return null
+  const counts = { added: 0, modified: 0, removed: 0 }
+  for (const d of diffs) {
+    const kind = normalizeKind(d.kind, d.before, d.after)
+    if (kind in counts) counts[kind as keyof typeof counts]++
+  }
+  return counts
+})
+
+/** 确认框摘要文案：N 个字段变更（M 新增、K 修改、J 删除） */
+const diffSummaryText = computed(() => {
+  const s = diffSummary.value
+  if (!s) return `${fieldCount.value} 个字段的权威值`
+  const parts: string[] = []
+  if (s.added > 0) parts.push(`${s.added} 新增`)
+  if (s.modified > 0) parts.push(`${s.modified} 修改`)
+  if (s.removed > 0) parts.push(`${s.removed} 删除`)
+  const total = s.added + s.modified + s.removed
+  if (parts.length === 0) return `${fieldCount.value} 个字段的权威值（无变更）`
+  return `${total} 个字段变更（${parts.join("、")}）`
 })
 
 function normalizeKind(

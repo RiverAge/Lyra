@@ -4,7 +4,12 @@ import asyncio
 import logging
 from pathlib import Path
 
+import mutagen  # noqa: PLC0415 — executor 线程内需模块级可用
 from fastapi import APIRouter, HTTPException, Query, Response
+from mutagen.flac import FLAC as _FLAC  # noqa: PLC0415 — 类型判断用，不直接构造
+from mutagen.mp3 import MP3 as _MP3  # noqa: PLC0415
+from mutagen.mp4 import MP4 as _MP4  # noqa: PLC0415
+from mutagen.mp4 import MP4Cover as _MP4Cover  # noqa: PLC0415 — covr 封面 bytes + format
 
 from backend.config import get_settings
 from backend.index.store import get_store
@@ -120,27 +125,23 @@ def _read_cover_bytes_sync(file_path: Path) -> tuple[bytes, str] | None:
     Returns:
         (cover_bytes, media_type) 或 None（无封面）。
     """
-    from mutagen.flac import FLAC
-    from mutagen.mp3 import MP3
-    from mutagen.mp4 import MP4, MP4Cover
-
     mf = mutagen.File(str(file_path))
     if mf is None:
         return None
 
-    if isinstance(mf, MP4):
+    if isinstance(mf, _MP4):
         covr_list = mf.get("covr")
         if not covr_list:
             return None
         cover = covr_list[0]
         # MP4Cover.imageformat: 0x0d=JPEG, 0x0e=PNG, 0x00=unknown(按 BMP)
-        if getattr(cover, "imageformat", None) == MP4Cover.Format.PNG:
+        if cover.imageformat == _MP4Cover.FORMAT_PNG:
             media_type = "image/png"
         else:
             media_type = "image/jpeg"
         return bytes(cover), media_type
 
-    if isinstance(mf, FLAC):
+    if isinstance(mf, _FLAC):
         pictures = mf.pictures
         if not pictures:
             return None
@@ -148,7 +149,7 @@ def _read_cover_bytes_sync(file_path: Path) -> tuple[bytes, str] | None:
         media_type = pic.mime or "image/jpeg"
         return pic.data, media_type
 
-    if isinstance(mf, MP3):
+    if isinstance(mf, _MP3):
         for key in mf:
             if not key.startswith("APIC:"):
                 continue
@@ -205,8 +206,6 @@ async def get_track_artwork(track_id: str) -> Response:
         raise HTTPException(status_code=404, detail="Track not found")
 
     # mutagen 同步调用 → executor
-    import mutagen  # noqa: PLC0415 — 局部 import 照 scanner.py:116 模式
-
     result = await asyncio.get_event_loop().run_in_executor(
         None, _read_cover_bytes_sync, track_path,
     )

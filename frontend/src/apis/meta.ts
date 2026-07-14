@@ -59,6 +59,20 @@ export interface WriteResponse {
   new_tag_map: Record<string, unknown>
 }
 
+/** 字段来源：Apple WebAPI 或 Credits 网页爬取 */
+export type FieldSource = "apple" | "credits"
+
+/** 字段级状态：正常 / 永久无（哨兵）/ 临时失败可重试 */
+export type FieldStatusKind = "ok" | "missing_permanent" | "failed_retryable"
+
+/** 带状态标记的字段行（合并 Apple + Credits 后统一展示） */
+export interface FieldWithStatus {
+  field: string
+  values: string[]
+  source: FieldSource
+  status: FieldStatusKind
+}
+
 /** 字段映射清单元素（后端 object，前端宽容读取 name/tag 等键） */
 export interface FieldInfo {
   name?: string
