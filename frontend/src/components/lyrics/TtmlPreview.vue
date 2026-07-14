@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-md border border-default bg-subtle p-3">
+  <div class="rounded-lg border border-subtle bg-surface p-3">
     <!-- 头部：行数统计 -->
     <div class="mb-2 flex items-center justify-between">
       <span class="text-sm font-medium text-primary">TTML 预览</span>

@@ -11,8 +11,8 @@
  */
 
 export const useAppStore = defineStore("app", () => {
-  // 主题状态：light | dark
-  const theme = ref<"light" | "dark">("light")
+  // 主题状态：light | dark（暗色优先，与 tokens.css 默认基调一致）
+  const theme = ref<"light" | "dark">("dark")
 
   // 初始化时从 localStorage 读取持久化主题（SSR 安全）
   function initTheme(): void {

@@ -15,6 +15,7 @@
       <BaseButton
         variant="primary"
         size="sm"
+        icon="RefreshCw"
         :disabled="scannerStore.triggering || scannerStore.isScanning"
         :title="scannerStore.isScanning ? '扫描进行中' : '触发扫描'"
         @click="onTrigger"
@@ -53,9 +54,9 @@
         </span>
       </div>
       <!-- 进度条 -->
-      <div v-if="scannerStore.totalFiles > 0" class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+      <div v-if="scannerStore.totalFiles > 0" class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-hover">
         <div
-          class="h-full rounded-full bg-accent transition-all duration-300"
+          class="h-full rounded-full bg-accent-gradient transition-all duration-300"
           :style="{ width: progressWidth }"
         />
       </div>

@@ -7,6 +7,7 @@
       <BaseButton
         variant="ghost"
         size="sm"
+        icon="RefreshCw"
         :disabled="store.loadingSidecars"
         @click="reload"
       >
@@ -54,19 +55,21 @@
             <BaseButton
               variant="secondary"
               size="sm"
+              icon="Eye"
+              icon-only
+              :title="expanded.has(item.source) ? '收起' : '查看'"
               @click="toggleExpand(item.source)"
-            >
-              {{ expanded.has(item.source) ? "收起" : "查看" }}
-            </BaseButton>
+            />
             <BaseButton
               variant="ghost"
               size="sm"
               danger
+              icon="Trash2"
+              icon-only
               :disabled="store.deleting === item.source"
+              :title="store.deleting === item.source ? '删除中' : '删除'"
               @click="confirmRemove(item.source)"
-            >
-              {{ store.deleting === item.source ? "删除中" : "删除" }}
-            </BaseButton>
+            />
           </div>
         </div>
 
@@ -98,7 +101,7 @@
       role="dialog"
       aria-modal="true"
     >
-      <div class="card w-full max-w-sm p-4 shadow-md">
+      <div class="card-elevated w-full max-w-sm p-4">
         <h4 class="mb-2 text-base font-medium text-primary">
           确认删除 sidecar
         </h4>
@@ -207,9 +210,9 @@ function sourceBadgeClass(source: LyricSource): string {
     case "apple":
       return "bg-accent-subtle text-accent"
     case "netease":
-      return "bg-accent-subtle text-success"
+      return "bg-success-subtle text-success"
     case "qq":
-      return "bg-accent-subtle text-warning"
+      return "bg-warning-subtle text-warning"
     default:
       return "bg-subtle text-secondary"
   }

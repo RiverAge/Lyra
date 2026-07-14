@@ -7,6 +7,7 @@
       <BaseButton
         variant="primary"
         size="sm"
+        icon="Search"
         :disabled="store.matching"
         @click="onMatch"
       >
@@ -53,7 +54,7 @@
           >
             <div class="flex items-center justify-between gap-2">
               <div class="flex items-center gap-2">
-                <span class="rounded-sm bg-bg-base px-1.5 py-0.5 text-xs font-medium text-primary">
+                <span class="rounded-sm bg-surface px-1.5 py-0.5 text-xs font-medium text-primary">
                   {{ c.source }}
                 </span>
                 <span class="text-sm text-primary">{{ c.title }}</span>
@@ -135,19 +136,19 @@ async function onAdopt(): Promise<void> {
   await store.adoptBest(props.trackId)
 }
 
-/** decision 徽章配色：accept=success / review=warning / reject=danger / not_found=tertiary。 */
+/** decision 徽章配色：accept=success / review=accent / reject=danger / not_found=tertiary。 */
 function decisionBadgeClass(d: MatchDecision | null): string {
   switch (d) {
     case "accept":
-      return "bg-accent-subtle text-success"
+      return "bg-success-subtle text-success"
     case "review":
-      return "bg-accent-subtle text-warning"
+      return "bg-accent-subtle text-accent"
     case "reject":
-      return "bg-accent-subtle text-danger"
+      return "bg-danger-subtle text-danger"
     case "not_found":
-      return "bg-subtle text-tertiary"
+      return "bg-surface text-tertiary"
     default:
-      return "bg-subtle text-tertiary"
+      return "bg-surface text-tertiary"
   }
 }
 

@@ -2,8 +2,8 @@
   <div class="mx-auto max-w-3xl px-6 py-6">
     <!-- 页头 -->
     <div class="mb-6">
-      <BaseButton variant="ghost" size="sm" @click="router.push('/library')">
-        ← 返回曲库
+      <BaseButton variant="ghost" size="sm" icon="ArrowLeft" @click="router.push('/library')">
+        返回曲库
       </BaseButton>
       <h1 class="mt-3 text-xl font-semibold text-primary">
         设置
@@ -59,13 +59,13 @@
             <span class="mb-1 block text-xs font-medium text-secondary">
               代理地址（Base URL）
             </span>
-            <input
+            <BaseInput
               v-model="creditsBaseUrl"
               type="url"
               placeholder="https://your-proxy.workers.dev"
-              class="w-full rounded-md border border-default bg-base px-3 py-2 text-sm text-primary outline-none focus:border-accent disabled:opacity-50"
+              class="w-full"
               :disabled="settingsStore.saving"
-            >
+            />
             <span class="mt-1 block text-xs text-tertiary">
               形如 <span class="font-mono">https://xxx.workers.dev</span>。留空 = 直连 music.apple.com
             </span>
@@ -94,13 +94,13 @@
         <!-- 成功/错误提示 -->
         <div
           v-if="settingsStore.saved"
-          class="mt-3 rounded-md border border-default bg-accent-subtle px-3 py-2 text-sm text-success"
+          class="mt-3 rounded-sm border border-subtle bg-success-subtle px-3 py-2 text-sm text-success"
         >
           已保存。后端下次 credits 请求即用新地址。
         </div>
         <div
           v-if="settingsStore.error"
-          class="mt-3 rounded-md border border-default bg-accent-subtle px-3 py-2 text-sm text-danger"
+          class="mt-3 rounded-sm border border-subtle bg-danger-subtle px-3 py-2 text-sm text-danger"
         >
           {{ settingsStore.error }}
         </div>
@@ -125,6 +125,7 @@
 <script setup lang="ts">
 import { useSettingsStore } from "@/stores/settings"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import BaseInput from "@/components/ui/BaseInput.vue"
 
 /**
  * 设置页

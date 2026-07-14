@@ -202,6 +202,10 @@ async def stream_track(request: Request, track_id: str) -> Response:
             raise HTTPException(
                 status_code=503,
                 detail=f"ffmpeg not available, cannot transcode {codec}",
+                headers={
+                    "X-Lyra-Reason": "ffmpeg-missing",
+                    "X-Lyra-Codec": codec,
+                },
             )
 
         return StreamingResponse(
@@ -210,6 +214,8 @@ async def stream_track(request: Request, track_id: str) -> Response:
             media_type=TRANSCODE_CONTENT_TYPE,
             headers={
                 "Cache-Control": "no-cache",
+                "X-Lyra-Codec": codec,
+                "X-Lyra-Transcoded": "true",
             },
         )
 
@@ -227,6 +233,8 @@ async def stream_track(request: Request, track_id: str) -> Response:
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Content-Length": str(content_length),
                 "Accept-Ranges": "bytes",
+                "X-Lyra-Codec": codec or "unknown",
+                "X-Lyra-Transcoded": "false",
             },
         )
 
@@ -237,6 +245,8 @@ async def stream_track(request: Request, track_id: str) -> Response:
         headers={
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
+            "X-Lyra-Codec": codec or "unknown",
+            "X-Lyra-Transcoded": "false",
         },
     )
 
@@ -261,12 +271,18 @@ async def stream_track_head(request: Request, track_id: str) -> Response:
             raise HTTPException(
                 status_code=503,
                 detail=f"ffmpeg not available, cannot transcode {codec}",
+                headers={
+                    "X-Lyra-Reason": "ffmpeg-missing",
+                    "X-Lyra-Codec": codec,
+                },
             )
         return Response(
             status_code=200,
             media_type=TRANSCODE_CONTENT_TYPE,
             headers={
                 "Cache-Control": "no-cache",
+                "X-Lyra-Codec": codec,
+                "X-Lyra-Transcoded": "true",
             },
         )
 
@@ -283,6 +299,8 @@ async def stream_track_head(request: Request, track_id: str) -> Response:
                 "Content-Range": f"bytes {start}-{end}/{file_size}",
                 "Content-Length": str(content_length),
                 "Accept-Ranges": "bytes",
+                "X-Lyra-Codec": codec or "unknown",
+                "X-Lyra-Transcoded": "false",
             },
         )
 
@@ -292,6 +310,8 @@ async def stream_track_head(request: Request, track_id: str) -> Response:
         headers={
             "Content-Length": str(file_size),
             "Accept-Ranges": "bytes",
+            "X-Lyra-Codec": codec or "unknown",
+            "X-Lyra-Transcoded": "false",
         },
     )
 

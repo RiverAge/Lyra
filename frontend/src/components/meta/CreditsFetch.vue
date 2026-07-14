@@ -36,7 +36,7 @@
     <!-- 错误提示 -->
     <p
       v-if="creditsError"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2 text-sm text-danger"
+      class="mb-3 rounded-md border border-default bg-subtle px-3 py-2 text-sm text-danger"
     >
       {{ creditsError }}
     </p>
@@ -44,7 +44,7 @@
     <!-- 永久无 credits 哨兵：真实页但无 roleNames，不重试/fallback -->
     <div
       v-if="noCredits"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2"
+      class="mb-3 rounded-md border border-default bg-subtle px-3 py-2"
     >
       <p class="text-sm font-medium text-warning">
         该曲目永久无 Credits 数据

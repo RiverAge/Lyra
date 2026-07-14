@@ -46,7 +46,7 @@
     <!-- 错误提示 -->
     <p
       v-if="appleError"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2 text-sm text-danger"
+      class="mb-3 rounded-md border border-default bg-subtle px-3 py-2 text-sm text-danger"
     >
       {{ appleError }}
     </p>

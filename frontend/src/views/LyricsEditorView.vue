@@ -1,8 +1,8 @@
 <template>
   <div class="mx-auto max-w-6xl px-6 py-6">
     <!-- 返回链接 -->
-    <BaseButton variant="ghost" size="sm" @click="router.back()">
-      ← 返回
+    <BaseButton variant="ghost" size="sm" icon="ArrowLeft" @click="router.back()">
+      返回
     </BaseButton>
 
     <!-- 顶部：trackId + source 选择器 + 全量保存 -->
@@ -19,7 +19,7 @@
         <label class="text-xs text-secondary">source</label>
         <select
           v-model="sourceSel"
-          class="rounded-sm border border-default bg-bg-base px-2 py-1 text-sm text-primary focus:border-accent focus:outline-none"
+          class="input-ring rounded-sm border border-subtle bg-surface px-2 py-1.5 text-sm text-primary"
           :disabled="store.loading || store.saving"
           @change="onSourceChange"
         >
@@ -30,6 +30,7 @@
         <BaseButton
           variant="primary"
           size="sm"
+          icon="Save"
           :disabled="store.saving || !store.doc"
           @click="onSave"
         >

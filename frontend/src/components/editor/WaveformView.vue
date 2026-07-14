@@ -9,9 +9,11 @@
           variant="primary"
           size="sm"
           :disabled="!ready && !decodeFailed"
+          :title="playing ? '暂停' : ready ? '播放' : '加载中'"
           @click="onPlayPause"
         >
-          {{ playing ? "暂停" : ready ? "播放" : "加载中" }}
+          <Icon v-if="!ready && !decodeFailed" name="Loader2" :size="16" spin />
+          <Icon v-else :name="playing ? 'Pause' : 'Play'" :size="16" />
         </BaseButton>
         <span class="font-mono text-xs text-secondary">
           {{ currentTimeLabel }}
@@ -38,6 +40,7 @@
 import WaveSurfer from "wavesurfer.js"
 import { formatTime } from "@/apis/editor"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import Icon from "@/components/ui/icons/Icon.vue"
 
 /**
  * 波形组件（wavesurfer.js）
@@ -85,8 +88,8 @@ onMounted(() => {
   const style = getComputedStyle(document.documentElement)
   ws.value = WaveSurfer.create({
     container: waveformRef.value,
-    waveColor: style.getPropertyValue("--color-border-default").trim() || "#999",
-    progressColor: style.getPropertyValue("--color-accent").trim() || "#5b8def",
+    waveColor: style.getPropertyValue("--color-border-default").trim() || "#5a5f70",
+    progressColor: style.getPropertyValue("--color-accent").trim() || "#6366f1",
     url: `/api/play/${props.trackId}`,
     height: 80,
   })

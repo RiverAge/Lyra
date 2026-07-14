@@ -33,26 +33,25 @@
       <div class="mb-3 flex flex-wrap items-end gap-3">
         <label class="flex flex-col gap-1 text-sm text-secondary">
           <span>storefront</span>
-          <input
+          <BaseInput
             v-model="storefront"
-            type="text"
             placeholder="us"
-            class="w-24 rounded-md border border-default bg-base px-2 py-1.5 text-sm text-primary outline-none focus:border-accent"
             :disabled="fetchAllLoading"
-          >
+            class="w-24"
+          />
         </label>
         <label class="flex flex-col gap-1 text-sm text-secondary">
           <span>lang</span>
-          <input
+          <BaseInput
             v-model="lang"
-            type="text"
             placeholder="zh-Hans"
-            class="w-32 rounded-md border border-default bg-base px-2 py-1.5 text-sm text-primary outline-none focus:border-accent"
             :disabled="fetchAllLoading"
-          >
+            class="w-32"
+          />
         </label>
         <BaseButton
           variant="primary"
+          icon="Search"
           :disabled="fetchAllLoading || !trackId"
           @click="onFetchAll"
         >
@@ -65,7 +64,7 @@
         <!-- Apple 失败 -->
         <div
           v-if="appleSourceStatus === 'failed_retryable'"
-          class="flex items-center gap-2 rounded-md border border-default bg-bg-subtle px-3 py-2"
+          class="flex items-center gap-2 rounded-md border border-subtle bg-danger-subtle px-3 py-2"
         >
           <p class="text-sm text-danger">
             结构化信息拉取失败，可重试
@@ -73,6 +72,7 @@
           <BaseButton
             variant="ghost"
             size="sm"
+            icon="RefreshCw"
             :disabled="fetchAllLoading"
             @click="onRetrySource('apple')"
           >
@@ -82,7 +82,7 @@
         <!-- Credits 永久无 -->
         <div
           v-if="creditsSourceStatus === 'missing_permanent'"
-          class="rounded-md border border-default bg-bg-subtle px-3 py-2"
+          class="rounded-md border border-subtle bg-surface px-3 py-2"
         >
           <p class="text-sm text-tertiary">
             该曲目暂无制作人员信息
@@ -91,7 +91,7 @@
         <!-- Credits 失败 -->
         <div
           v-if="creditsSourceStatus === 'failed_retryable'"
-          class="flex items-center gap-2 rounded-md border border-default bg-bg-subtle px-3 py-2"
+          class="flex items-center gap-2 rounded-md border border-subtle bg-danger-subtle px-3 py-2"
         >
           <p class="text-sm text-danger">
             制作人员信息拉取失败，可重试
@@ -99,6 +99,7 @@
           <BaseButton
             variant="ghost"
             size="sm"
+            icon="RefreshCw"
             :disabled="fetchAllLoading"
             @click="onRetrySource('credits')"
           >
@@ -121,7 +122,7 @@
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-sm">
           <thead>
-            <tr class="border-b border-default text-left text-secondary">
+            <tr class="border-b border-subtle text-left text-secondary">
               <th class="py-2 pr-4 font-medium">
                 字段
               </th>
@@ -163,7 +164,7 @@
               <td class="py-2 text-center">
                 <span
                   class="rounded-sm px-1.5 py-0.5 text-xs font-medium"
-                  :class="row.source === 'apple' ? 'bg-accent-subtle text-accent' : 'bg-bg-subtle text-secondary'"
+                  :class="row.source === 'apple' ? 'bg-accent-subtle text-accent' : 'bg-surface text-secondary'"
                 >
                   {{ row.source === "apple" ? "官方信息" : "制作人员" }}
                 </span>
@@ -171,13 +172,13 @@
               <td class="py-2 text-center">
                 <span
                   v-if="row.status === 'missing_permanent'"
-                  class="rounded-sm bg-bg-subtle px-1.5 py-0.5 text-xs font-medium text-tertiary"
+                  class="rounded-sm bg-surface px-1.5 py-0.5 text-xs font-medium text-tertiary"
                 >
                   暂无
                 </span>
                 <span
                   v-else-if="row.status === 'failed_retryable'"
-                  class="rounded-sm bg-bg-subtle px-1.5 py-0.5 text-xs font-medium text-danger"
+                  class="rounded-sm bg-surface px-1.5 py-0.5 text-xs font-medium text-danger"
                 >
                   失败
                 </span>
@@ -208,6 +209,7 @@
 <script setup lang="ts">
 import DiffView from "@/components/meta/DiffView.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import BaseInput from "@/components/ui/BaseInput.vue"
 import { useMetaStore } from "@/stores/meta"
 import type { AuthoritativeFields, FieldWithStatus } from "@/apis/meta"
 

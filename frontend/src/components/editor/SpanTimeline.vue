@@ -27,7 +27,7 @@
           <span class="font-mono text-xs text-tertiary">
             {{ String(li + 1).padStart(2, "0") }}
           </span>
-          <span class="rounded-sm bg-bg-base px-1.5 py-0.5 font-mono text-xs text-secondary">
+          <span class="rounded-sm bg-surface px-1.5 py-0.5 font-mono text-xs text-secondary">
             {{ line.key || "—" }}
           </span>
           <button
@@ -37,7 +37,9 @@
           >
             {{ formatTime(line.begin_ms) }}
           </button>
-          <span class="text-tertiary">→</span>
+          <span class="text-tertiary">
+            <Icon name="ChevronRight" :size="12" />
+          </span>
           <button
             class="font-mono text-xs text-secondary transition-colors hover:text-primary"
             :title="`行 end: ${formatTime(line.end_ms)}`"
@@ -52,7 +54,7 @@
           <button
             v-for="(span, si) in line.spans"
             :key="si"
-            :class="isSpanCurrent(li, si) ? 'bg-accent text-white' : 'bg-bg-base text-primary hover:bg-hover'"
+            :class="isSpanCurrent(li, si) ? 'bg-accent text-on-accent' : 'bg-surface text-primary hover:bg-hover'"
             class="rounded-sm px-1.5 py-0.5 text-sm transition-colors"
             :title="`${span.text}  ${formatTime(span.begin_ms)}→${formatTime(span.end_ms)}`"
             @click="onSelectSpan(li, si, span)"
@@ -73,6 +75,7 @@
 <script setup lang="ts">
 import type { LineModel, SpanModel } from "@/apis/editor"
 import { formatTime } from "@/apis/editor"
+import Icon from "@/components/ui/icons/Icon.vue"
 
 /**
  * Span 时间轴

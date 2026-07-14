@@ -1,64 +1,96 @@
 <template>
   <div class="mx-auto max-w-6xl px-6 py-6">
     <!-- 返回链接 -->
-    <BaseButton variant="ghost" size="sm" @click="router.back()">
-      ← 返回曲库
+    <BaseButton variant="ghost" size="sm" icon="ArrowLeft" @click="router.back()">
+      返回曲库
     </BaseButton>
 
     <!-- 加载中 -->
-    <div v-if="loading" class="card p-8 text-center">
+    <div v-if="loading" class="card mt-4 p-12 text-center">
+      <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-subtle">
+        <Icon name="Loader2" :size="20" spin />
+      </div>
       <p class="text-sm text-secondary">
         正在加载 track 信息…
       </p>
     </div>
 
     <!-- 加载失败 -->
-    <div v-else-if="loadError" class="card p-8 text-center">
+    <div v-else-if="loadError" class="card mt-4 p-12 text-center">
+      <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-danger-subtle text-danger">
+        <Icon name="AlertCircle" :size="20" />
+      </div>
       <p class="mb-2 text-sm font-medium text-danger">
         加载失败
       </p>
-      <p class="mb-3 text-xs text-secondary">
+      <p class="mb-4 text-xs text-secondary">
         {{ loadError }}
       </p>
-      <BaseButton variant="secondary" size="sm" @click="loadTrack">
+      <BaseButton variant="secondary" size="sm" icon="RefreshCw" @click="loadTrack">
         重试
       </BaseButton>
     </div>
 
     <!-- track 详情壳 -->
     <template v-else-if="track">
-      <div>
-        <!-- 顶部：基本信息 -->
-        <div class="card mb-4 p-5">
-          <h1 class="text-xl font-semibold text-primary">
-            {{ track.title || "（无标题）" }}
-          </h1>
-          <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-secondary">
-            <span>{{ track.artist || "—" }}</span>
-            <span class="text-tertiary">·</span>
-            <span>{{ track.album || "—" }}</span>
-            <span class="text-tertiary">·</span>
-            <span class="font-mono text-tertiary">{{ formatMs(track.duration) }}</span>
-            <span class="text-tertiary">·</span>
-            <span class="font-mono text-tertiary uppercase">{{ track.codec || "—" }}</span>
-          </div>
-          <p class="mt-2 truncate font-mono text-xs text-tertiary" title="path">
-            {{ track.path }}
-          </p>
-        </div>
+      <div class="mt-4">
+        <!-- Hero 区：大封面 + 信息（合并原顶部 info card，消除与 dock 的重复） -->
+        <div class="card mb-6 p-6">
+          <div class="flex flex-col gap-6 sm:flex-row">
+            <!-- 封面 -->
+            <div class="flex-shrink-0">
+              <img
+                v-if="track.has_cover && !coverError"
+                :src="`/api/library/${track.id}/artwork`"
+                :alt="track.title"
+                class="h-40 w-40 rounded-lg object-cover shadow-md"
+                @error="coverError = true"
+              >
+              <div
+                v-else
+                class="flex h-40 w-40 items-center justify-center rounded-lg bg-subtle text-tertiary shadow-md"
+              >
+                <Icon name="Music" :size="48" />
+              </div>
+            </div>
 
-        <!-- 播放器 -->
-        <div class="mb-4">
-          <AudioPlayer />
+            <!-- 信息 -->
+            <div class="min-w-0 flex-1">
+              <h1 class="text-2xl font-semibold text-primary">
+                {{ track.title || "（无标题）" }}
+              </h1>
+              <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                <span class="text-secondary">{{ track.artist || "—" }}</span>
+                <span class="text-tertiary">·</span>
+                <span class="text-secondary">{{ track.album || "—" }}</span>
+              </div>
+
+              <!-- 元数据徽章 -->
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <span class="rounded-sm bg-subtle px-2 py-1 font-mono text-xs text-tertiary">
+                  {{ formatMs(track.duration) }}
+                </span>
+                <span
+                  v-if="track.codec"
+                  class="rounded-sm bg-subtle px-2 py-1 font-mono text-xs uppercase text-tertiary"
+                >{{ track.codec }}</span>
+              </div>
+
+              <!-- 路径 -->
+              <p class="mt-4 truncate font-mono text-xs text-tertiary" title="path">
+                {{ track.path }}
+              </p>
+            </div>
+          </div>
         </div>
 
         <!-- tab 切换 -->
-        <div class="mb-4 border-b border-default">
+        <div class="mb-4 border-b border-subtle">
           <nav class="flex gap-1">
             <button
               v-for="tab in tabs"
               :key="tab.key"
-              class="border-b-2 px-4 py-2 text-sm transition-colors"
+              class="border-b-2 px-4 py-2.5 text-sm transition-colors"
               :class="
                 activeKey === tab.key
                   ? 'border-accent font-medium text-primary'
@@ -80,21 +112,24 @@
         </div>
 
         <!-- 底部：进入逐字编辑器入口 -->
-        <div class="mt-6 flex items-center justify-end gap-3 border-t border-default pt-4">
-          <BaseButton variant="secondary" @click="goLyricsEditor">
-            进入逐字编辑器 →
+        <div class="mt-6 flex items-center justify-end gap-3 border-t border-subtle pt-4">
+          <BaseButton variant="secondary" icon="Edit3" @click="goLyricsEditor">
+            进入逐字编辑器
           </BaseButton>
         </div>
       </div>
     </template>
 
     <!-- id 不存在（已尝试加载但 track 仍为 null） -->
-    <div v-else class="card p-8 text-center">
+    <div v-else class="card mt-4 p-12 text-center">
+      <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-subtle text-tertiary">
+        <Icon name="AlertCircle" :size="20" />
+      </div>
       <p class="text-sm text-secondary">
         未找到该 track（id: <span class="font-mono text-tertiary">{{ trackId }}</span>）
       </p>
-      <div class="mt-3">
-        <BaseButton variant="secondary" size="sm" @click="router.push('/library')">
+      <div class="mt-4">
+        <BaseButton variant="secondary" size="sm" icon="ArrowLeft" @click="router.push('/library')">
           返回曲库
         </BaseButton>
       </div>
@@ -108,7 +143,7 @@ import type { TrackItem } from "@/apis/library"
 import { fetchTrackById } from "@/apis/library"
 import { usePlayerStore } from "@/stores/player"
 import BaseButton from "@/components/ui/BaseButton.vue"
-import AudioPlayer from "@/components/player/AudioPlayer.vue"
+import Icon from "@/components/ui/icons/Icon.vue"
 
 const MetaTab = defineAsyncComponent(() => import("@/components/meta/MetaTab.vue"))
 const LyricsTab = defineAsyncComponent(() => import("@/components/lyrics/LyricsTab.vue"))
@@ -117,8 +152,8 @@ const LyricsTab = defineAsyncComponent(() => import("@/components/lyrics/LyricsT
  * Track 详情页壳
  *
  * 设计：
- * - 顶部：基本信息 + 路径 + codec + duration
- * - 中部：AudioPlayer（共享 playerStore，进入时若 currentTrack != this 则切到此 track）
+ * - Hero 区：大封面 + 标题/艺人/专辑/时长/codec/路径（合并原顶部 info card）
+ * - 播放器已全局化为 PlayerDock（App.vue 挂载），此处不再渲染独立播放器
  * - tab 容器：meta / lyrics（M6-B/M6-C 合流：defineAsyncComponent 动态加载）
  * - 底部：进入逐字编辑器按钮 → /track/:id/lyrics-editor（M6-D）
  */
@@ -128,7 +163,6 @@ interface TabEntry {
   component: Component
 }
 
-// tab 注册表：M6-B MetaTab + M6-C LyricsTab
 const tabs: TabEntry[] = [
   { key: "meta", label: "元数据", component: MetaTab },
   { key: "lyrics", label: "歌词", component: LyricsTab },
@@ -147,6 +181,7 @@ const trackId = computed(() => String(route.params.id || ""))
 const track = ref<TrackItem | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
+const coverError = ref(false)
 
 onMounted(() => {
   void loadTrack()
@@ -169,6 +204,7 @@ async function loadTrack(): Promise<void> {
   }
   loading.value = true
   loadError.value = null
+  coverError.value = false
   try {
     track.value = await fetchTrackById(trackId.value)
     // 同步到播放器 store（若当前播放的不是此 track）

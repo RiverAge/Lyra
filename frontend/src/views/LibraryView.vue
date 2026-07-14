@@ -3,61 +3,70 @@
     <!-- 页头 -->
     <div class="mb-6 flex items-center justify-between gap-3">
       <div>
-        <h1 class="text-xl font-semibold text-primary">
+        <h1 class="text-2xl font-semibold text-primary">
           曲库
         </h1>
-        <p class="mt-1 text-xs text-secondary">
+        <p class="mt-1 text-sm text-secondary">
           浏览音乐库内的曲目
         </p>
       </div>
-      <BaseButton variant="ghost" size="sm" @click="reload">
-        刷新
-      </BaseButton>
-    </div>
-
-    <!-- 主体：扫描进度 + 列表 -->
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div class="lg:col-span-2">
-        <TrackList
-          :tracks="libraryStore.items"
-          :loading="libraryStore.loading"
-          :error="libraryStore.error"
-          :page="libraryStore.page"
-          :total-pages="libraryStore.totalPages"
-          :total="libraryStore.total"
-          @navigate="onNavigate"
-          @prev="libraryStore.prevPage"
-          @next="libraryStore.nextPage"
-          @retry="reload"
+      <div class="flex items-center gap-3">
+        <BaseInput
+          v-model="searchKeyword"
+          placeholder="搜索曲目…"
+          icon="Search"
+          class="w-48"
+        />
+        <BaseButton
+          variant="ghost"
+          size="md"
+          icon="RefreshCw"
+          icon-only
+          title="刷新"
+          @click="reload"
         />
       </div>
-
-      <div class="space-y-4">
-        <ScanProgress />
-        <!-- 播放器浮窗：仅在有当前 track 时显示 -->
-        <AudioPlayer v-if="playerStore.currentTrack" />
-      </div>
     </div>
+
+    <!-- 扫描进度（顶部条，播放器已全局化） -->
+    <div class="mb-4">
+      <ScanProgress />
+    </div>
+
+    <!-- 主体：卡片网格 -->
+    <TrackList
+      :tracks="libraryStore.items"
+      :loading="libraryStore.loading"
+      :error="libraryStore.error"
+      :page="libraryStore.page"
+      :total-pages="libraryStore.totalPages"
+      :total="libraryStore.total"
+      @navigate="onNavigate"
+      @prev="libraryStore.prevPage"
+      @next="libraryStore.nextPage"
+      @retry="reload"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { useLibraryStore } from "@/stores/library"
-import { usePlayerStore } from "@/stores/player"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import BaseInput from "@/components/ui/BaseInput.vue"
 import TrackList from "@/components/library/TrackList.vue"
 import ScanProgress from "@/components/scanner/ScanProgress.vue"
-import AudioPlayer from "@/components/player/AudioPlayer.vue"
 
 /**
  * 曲库分页列表视图
  * - 首次进入自动加载第 1 页
- * - 点击 track 行 → router.push('/track/' + id)
- * - 右侧栏：扫描进度 + 播放器（条件渲染）
+ * - 点击 track 卡片 → router.push('/track/' + id)
+ * - 搜索框预留（v-model 绑定，当前仅本地状态，后端搜索能力后续接入）
+ * - 播放器已全局化为 PlayerDock（App.vue 挂载）
  */
 const libraryStore = useLibraryStore()
-const playerStore = usePlayerStore()
 const router = useRouter()
+
+const searchKeyword = ref("")
 
 onMounted(() => {
   void libraryStore.loadPage(1)

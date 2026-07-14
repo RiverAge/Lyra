@@ -2,8 +2,19 @@
   <button
     :class="computedClass"
     :disabled="disabled"
+    :title="title"
   >
-    <slot />
+    <Icon
+      v-if="iconName"
+      :name="iconName"
+      :size="iconSize"
+    />
+    <slot v-if="!iconOnly" />
+    <Icon
+      v-if="iconRightName"
+      :name="iconRightName"
+      :size="iconSize"
+    />
   </button>
 </template>
 
@@ -12,59 +23,79 @@
  * BaseButton — 统一按钮组件
  *
  * 三级 variant：
- * - primary:   实心填充（bg-accent + text-white），主操作（保存/拉取/确认写入）
- * - secondary: 浅底描边（bg-surface + border），次操作（撤销/重试/重置）
- * - ghost:     透明无边（bg-transparent），弱操作（返回/刷新/翻页/图标按钮）
+ * - primary:   accent 渐变填充 + 白字，主操作（保存/拉取/确认写入）
+ * - secondary: surface 底 + subtle 边框，次操作（撤销/重试/重置）
+ * - ghost:     透明无边，弱操作（返回/刷新/翻页）
  *
  * 变体：
  * - danger: 叠加到 primary 或 secondary 上，改用 danger 色调（删除/取消）
  * - size: sm（xs 文字 + 紧凑内距）/ md（sm 文字 + 标准内距）
+ * - icon / iconRight: 图标 name，左侧/右侧内联 SVG
+ * - iconOnly: 纯图标按钮（方形 padding，用于播放器控制）
  *
  * 用法：
- * <BaseButton variant="primary" @click="save">保存</BaseButton>
- * <BaseButton variant="ghost" size="sm" @click="back">← 返回</BaseButton>
- * <BaseButton variant="primary" danger @click="del">删除</BaseButton>
+ * <BaseButton variant="primary" icon="Save" @click="save">保存</BaseButton>
+ * <BaseButton variant="ghost" size="sm" icon="ArrowLeft" @click="back">返回曲库</BaseButton>
+ * <BaseButton variant="primary" danger icon="Trash2" icon-only @click="del" title="删除" />
  */
+import Icon from "@/components/ui/icons/Icon.vue"
+import type { IconName } from "@/components/ui/icons/paths"
+
 const props = withDefaults(
   defineProps<{
     variant?: "primary" | "secondary" | "ghost"
     size?: "sm" | "md"
     danger?: boolean
     disabled?: boolean
+    icon?: IconName
+    iconRight?: IconName
+    iconOnly?: boolean
+    title?: string
   }>(),
   {
     variant: "secondary",
     size: "md",
     danger: false,
     disabled: false,
+    iconOnly: false,
   },
 )
 
-const baseClass = "inline-flex items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+const iconName = computed(() => props.icon ?? null)
+const iconRightName = computed(() => props.iconRight ?? null)
 
-const sizeClass = computed(() =>
-  props.size === "sm"
+const iconSize = computed(() => (props.size === "sm" ? 14 : 16))
+
+const baseClass =
+  "inline-flex items-center justify-center gap-1.5 rounded-sm transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+
+const sizeClass = computed(() => {
+  if (props.iconOnly) {
+    // 纯图标按钮：方形 padding
+    return props.size === "sm" ? "p-1.5" : "p-2"
+  }
+  return props.size === "sm"
     ? "px-2.5 py-1 text-xs"
-    : "px-3 py-1.5 text-sm",
-)
+    : "px-3.5 py-1.5 text-sm"
+})
 
 const variantClass = computed(() => {
   // danger 变体优先
   if (props.danger) {
     if (props.variant === "primary") {
-      return "bg-danger text-white hover:opacity-90"
+      return "bg-danger text-on-accent hover:opacity-90 hover:shadow-md active:translate-y-0"
     }
     // secondary + danger
-    return "border border-danger text-danger hover:bg-danger/5"
+    return "bg-surface border border-danger/40 text-danger hover:bg-danger-subtle hover:border-danger/60"
   }
   switch (props.variant) {
     case "primary":
-      return "bg-accent text-white hover:bg-accent-hover active:bg-accent-pressed"
+      return "bg-accent-gradient text-on-accent hover:shadow-lg hover:-translate-y-px active:translate-y-0 active:shadow-md"
     case "ghost":
-      return "bg-transparent text-secondary hover:bg-hover"
+      return "bg-transparent text-secondary hover:bg-hover hover:text-primary"
     case "secondary":
     default:
-      return "bg-surface border border-default text-primary hover:bg-hover"
+      return "bg-surface border border-subtle text-primary hover:bg-elevated hover:border-default hover:shadow-sm"
   }
 })
 

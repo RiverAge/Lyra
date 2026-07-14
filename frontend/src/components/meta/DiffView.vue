@@ -7,6 +7,7 @@
       <div class="flex items-center gap-2">
         <BaseButton
           variant="secondary"
+          icon="Check"
           :disabled="diffLoading || !hasFields"
           @click="onCompute"
         >
@@ -15,6 +16,7 @@
         <BaseButton
           variant="primary"
           danger
+          icon="Edit3"
           :disabled="!canWrite"
           title="请先对比 before/after"
           @click="showConfirm = true"
@@ -27,19 +29,19 @@
     <!-- 错误/提示区 -->
     <p
       v-if="diffError"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2 text-sm text-danger"
+      class="mb-3 rounded-md border border-subtle bg-danger-subtle px-3 py-2 text-sm text-danger"
     >
       {{ diffError }}
     </p>
     <p
       v-if="writeError"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2 text-sm text-danger"
+      class="mb-3 rounded-md border border-subtle bg-danger-subtle px-3 py-2 text-sm text-danger"
     >
       {{ writeError }}
     </p>
     <div
       v-if="writeResult"
-      class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2"
+      class="mb-3 rounded-md border border-subtle bg-success-subtle px-3 py-2"
     >
       <p class="text-sm font-medium text-success">
         写入成功：{{ writeResult.fields_written }} 个字段（{{ writeResult.format }}）
@@ -69,7 +71,7 @@
     <div v-if="diffResult && diffRows.length > 0" class="overflow-x-auto">
       <table class="w-full border-collapse text-sm">
         <thead>
-          <tr class="border-b border-default text-left text-secondary">
+          <tr class="border-b border-subtle text-left text-secondary">
             <th class="py-2 pr-4 font-medium">字段</th>
             <th class="py-2 pr-4 font-medium">before</th>
             <th class="py-2 pr-4 font-medium">after</th>
@@ -113,7 +115,7 @@
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
         @click.self="showConfirm = false"
       >
-        <div class="card max-w-md w-full p-5 shadow-md">
+        <div class="card-elevated max-w-md w-full p-5">
           <h4 class="mb-2 text-base font-semibold text-primary">
             确认写入标签？
           </h4>
@@ -125,7 +127,7 @@
           </p>
           <div
             v-if="writeError"
-            class="mb-3 rounded-md border border-default bg-bg-subtle px-3 py-2 text-sm text-danger"
+            class="mb-3 rounded-md border border-subtle bg-danger-subtle px-3 py-2 text-sm text-danger"
           >
             {{ writeError }}
           </div>
@@ -290,11 +292,11 @@ function kindLabel(kind: DiffRow["kind"]): string {
 function kindClass(kind: DiffRow["kind"]): string {
   switch (kind) {
     case "added":
-      return "rounded-sm bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-success"
+      return "rounded-sm bg-success-subtle px-1.5 py-0.5 text-xs font-medium text-success"
     case "modified":
       return "rounded-sm bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-accent"
     case "removed":
-      return "rounded-sm bg-accent-subtle px-1.5 py-0.5 text-xs font-medium text-danger"
+      return "rounded-sm bg-danger-subtle px-1.5 py-0.5 text-xs font-medium text-danger"
     case "unchanged":
       return "text-xs text-tertiary"
     default:

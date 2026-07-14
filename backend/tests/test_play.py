@@ -8,7 +8,7 @@
 只关心字节 range 是否正确。codec 来自 DB 记录而非文件头）。
 """
 
-import asyncio
+import threading
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from unittest.mock import patch
@@ -628,44 +628,54 @@ async def test_play_transcode_process_cleanup(
 
 
 class _FakeProc:
-    """模拟 ffmpeg subprocess，用于验证断连时 kill 被调用。"""
+    """模拟同步 subprocess.Popen，用于验证断连时 kill 被调用。
+
+    对齐真实 Popen 接口：poll()/wait()/kill() 同步，stdout/stderr 是
+    _FakeStreamReader（同步 read）。
+    """
 
     def __init__(self, chunks: list[bytes], block_after: bool = True) -> None:
         self._chunks = chunks
         self._block_after = block_after
         self.killed = False
-        self.waited = False
-        self.returncode: int | None = None
+        self._returncode: int | None = None
         self.stdout = _FakeStreamReader(chunks, block_after)
         self.stderr = _FakeStreamReader([], False)
 
+    def poll(self) -> int | None:
+        return self._returncode
+
     def kill(self) -> None:
         self.killed = True
-        self.returncode = -9
-        # 解除 stdout 的阻塞 read
+        self._returncode = -9
+        # 解除 stdout 的阻塞 read（线程才能退出）
         self.stdout._unblock()
 
-    async def wait(self) -> int:
-        self.waited = True
-        return self.returncode if self.returncode is not None else 0
+    def wait(self) -> int:
+        return self._returncode if self._returncode is not None else 0
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
 
 
 class _FakeStreamReader:
-    """模拟 asyncio.StreamReader，按 chunks 返回数据，可阻塞。
+    """模拟同步文件/pipe read，按 chunks 返回数据，可阻塞。
 
-    对齐真实 StreamReader.read(n=-1) 语义：n 可选，默认读全部。
+    对齐真实 pipe 的 read(n)：n>0 读指定字节，n<=0/省略读全部剩余。
+    阻塞用 threading.Event（在后台线程的同步上下文中阻塞，非 async）。
     """
 
     def __init__(self, chunks: list[bytes], block_after: bool) -> None:
         self._chunks = list(chunks)
         self._block_after = block_after
         self._index = 0
-        self._unblock_event = asyncio.Event()
+        self._unblock_event = threading.Event()
 
     def _unblock(self) -> None:
         self._unblock_event.set()
 
-    async def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+    def read(self, size: int = -1) -> bytes:
         # size > 0: 分块读（stdout 路径）；size <= 0: 读全部（stderr 路径）
         if size > 0:
             if self._index < len(self._chunks):
@@ -673,7 +683,7 @@ class _FakeStreamReader:
                 self._index += 1
                 return chunk
             if self._block_after:
-                await self._unblock_event.wait()
+                self._unblock_event.wait()
                 return b""
             return b""
         # size <= 0：读全部剩余（stderr read() 无参走此路径）
@@ -693,6 +703,9 @@ async def test_play_transcode_killed_on_client_disconnect(
     测试策略：不走 HTTP 层（ASGITransport 的客户端断开语义不可靠，
     可能死锁）。直接对 transcode_stream 生成器做 aclose()，模拟
     StreamingResponse 在 send OSError 时关闭 body_iterator 的行为。
+
+    fake proc 是同步 Popen 风格（poll/wait/kill 同步），patch 目标是
+    backend.play.transcode.subprocess.Popen。
     """
     reset_ffmpeg_probe()
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
@@ -703,24 +716,19 @@ async def test_play_transcode_killed_on_client_disconnect(
     # fake proc：yield 一块数据后阻塞（模拟转码进行中，stdout 未 EOF）
     fake_proc = _FakeProc(chunks=[b"partial opus data"], block_after=True)
 
-    async def _fake_create_subprocess(*args, **kwargs):  # type: ignore[no-untyped-def]
-        # noqa: ARG001
-        return fake_proc
-
     with patch(
-        "backend.play.transcode.asyncio.create_subprocess_exec",
-        side_effect=_fake_create_subprocess,
+        "backend.play.transcode.subprocess.Popen",
+        return_value=fake_proc,
     ):
         gen = transcode_stream(test_file)
         first_chunk = await gen.__anext__()
         assert first_chunk == b"partial opus data"
-        # 第二次 __anext__ 会阻塞（fake proc stdout 阻塞）
+        # 第二次 __anext__ 会阻塞（fake proc stdout 阻塞 + queue 无新数据）
         # 模拟 StreamingResponse 在 send OSError 时关闭生成器
         await gen.aclose()
 
-    # 生成器被 aclose 关闭 → finally 执行 → kill + wait
+    # 生成器被 aclose 关闭 → finally 执行 → kill（proc.poll() 非 None 判定走 kill 分支）
     assert fake_proc.killed, "ffmpeg proc 应被 finally kill"
-    assert fake_proc.waited, "ffmpeg proc 应被 await wait()"
 
     reset_ffmpeg_probe()
 
@@ -728,7 +736,7 @@ async def test_play_transcode_killed_on_client_disconnect(
 async def test_play_transcode_normally_completes_no_kill(
     store: IndexStore, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
 ) -> None:
-    """ffmpeg 正常结束时，finally 不调 kill（returncode 非 None），只读 stderr。"""
+    """ffmpeg 正常结束时，finally 不调 kill（poll() 非 None），只读 stderr。"""
     reset_ffmpeg_probe()
     monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
 
@@ -746,16 +754,12 @@ async def test_play_transcode_normally_completes_no_kill(
 
     # fake proc：yield 数据后 EOF（正常结束），returncode=0
     fake_proc = _FakeProc(chunks=[b"complete opus data"], block_after=False)
-    fake_proc.returncode = 0
-
-    async def _fake_create_subprocess(*args, **kwargs):  # type: ignore[no-untyped-def]
-        # noqa: ARG001
-        return fake_proc
+    fake_proc._returncode = 0
 
     with (
         patch("backend.play.stream.is_ffmpeg_available", return_value=True),
-        patch("backend.play.transcode.asyncio.create_subprocess_exec",
-              side_effect=_fake_create_subprocess),
+        patch("backend.play.transcode.subprocess.Popen",
+              return_value=fake_proc),
     ):
         app = FastAPI()
         app.include_router(play_router, prefix="/api")
@@ -766,7 +770,7 @@ async def test_play_transcode_normally_completes_no_kill(
 
     assert resp.status_code == 200
     assert resp.content == b"complete opus data"
-    # 正常结束：returncode 非 None，不调 kill
+    # 正常结束：poll() 非 None，不调 kill
     assert not fake_proc.killed, "正常结束不应调 kill"
 
     reset_ffmpeg_probe()
