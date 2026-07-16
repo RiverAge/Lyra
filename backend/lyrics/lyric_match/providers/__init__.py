@@ -65,3 +65,27 @@ class LyricProvider(ABC):
         present). NetEase reports lrc/yrc/tlyric/romalrc/klyric; QQ reports
         qrc. Pure function (no I/O), so it stays sync."""
         raise NotImplementedError
+
+
+async def fetch_lyrics_cached(
+    provider: LyricProvider, candidate: Candidate,
+) -> dict[str, Any] | None:
+    """fetch_lyrics + 进程级 raw payload 缓存。
+
+    覆盖 runner / preview 两处调 fetch_lyrics 的入口（QQ 内部 find_qrc_candidate
+    走 qq.py 自己 fetch_lyrics 的跨请求缓存，见 qq.py）。命中即返回缓存的 raw
+    payload；miss 则回源 fetch_lyrics 再 set。TTL/语义见 payload_cache.py。
+
+    candidate.id 为空（候选无 id）→ 不缓存、直接回源（provider 自己也会判）。
+    """
+    if not candidate.id:
+        return None
+    from backend.lyrics.lyric_match.payload_cache import get_payload_cache
+
+    cache = get_payload_cache()
+    hit = await cache.get(provider.source, candidate.id)
+    if hit is not None:
+        return hit
+    payload = await provider.fetch_lyrics(candidate)
+    await cache.set(provider.source, candidate.id, payload)
+    return payload

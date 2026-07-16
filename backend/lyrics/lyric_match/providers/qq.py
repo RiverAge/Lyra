@@ -41,6 +41,7 @@ from typing import Any
 import httpx
 
 from backend.lyrics.lyric_match.crypto.tripledes_qq import decrypt_qrc
+from backend.lyrics.lyric_match.payload_cache import get_payload_cache
 from backend.lyrics.lyric_match.providers import LyricProvider
 from backend.lyrics.lyric_match.scoring import make_queries
 from backend.lyrics.lyric_match.types import REVIEW_SCORE, Candidate, TrackQuery
@@ -278,6 +279,12 @@ class QqProvider(LyricProvider):
         cached = self._qrc_cache.get(candidate.id)
         if cached is not None:
             return cached
+        # 跨请求磁盘缓存：命中则喂给实例缓存并返回（find_qrc_candidate 走这里，
+        # 让重复匹配/探测也吃跨请求缓存）。miss/过期/损坏由 cache.get 返回 None。
+        cross = await get_payload_cache().get(self.source, candidate.id)
+        if cross is not None:
+            self._qrc_cache[candidate.id] = cross
+            return cross
         url = f"{_LYRIC_URL}?version=15&miniversion=82&lrctype=4&musicid={candidate.id}"
         try:
             raw = await self._qq_get(url)
@@ -295,6 +302,7 @@ class QqProvider(LyricProvider):
                 "_qrc_status": "no_content",
             }
             self._qrc_cache[candidate.id] = payload
+            await get_payload_cache().set(self.source, candidate.id, payload)
             return payload
         hex_str = m.group(1)
         try:
@@ -323,6 +331,7 @@ class QqProvider(LyricProvider):
                 "_qrc_status": "placeholder",
             }
             self._qrc_cache[candidate.id] = payload
+            await get_payload_cache().set(self.source, candidate.id, payload)
             return payload
         payload = {"_qrc_xml": qrc_xml, "_provider_source": "qq"}
         # 同响应里抽翻译(contentts)/注音(contentroma)：独立加密 payload，
@@ -330,6 +339,7 @@ class QqProvider(LyricProvider):
         payload["_qrc_ts_xml"] = self._decrypt_aux(raw, _CONTENTTS_RE, "contentts")
         payload["_qrc_roma_xml"] = self._decrypt_aux(raw, _CONTENTROMA_RE, "contentroma")
         self._qrc_cache[candidate.id] = payload
+        await get_payload_cache().set(self.source, candidate.id, payload)
         return payload
 
     async def find_qrc_candidate(

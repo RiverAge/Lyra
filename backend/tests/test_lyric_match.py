@@ -29,7 +29,11 @@ from backend.index.store import IndexStore, set_store
 from backend.lyrics.lyric_match.converters import payload_to_ttml, qrc_xml_to_ttml
 from backend.lyrics.lyric_match.crypto.tripledes_qq import decrypt_qrc
 from backend.lyrics.lyric_match.crypto.weapi_netease import weapi_encrypt_with_key
-from backend.lyrics.lyric_match.providers import LyricProvider
+from backend.lyrics.lyric_match.payload_cache import (
+    get_payload_cache,
+    reset_payload_cache_for_test,
+)
+from backend.lyrics.lyric_match.providers import LyricProvider, fetch_lyrics_cached
 from backend.lyrics.lyric_match.runner import match_query
 from backend.lyrics.lyric_match.scoring import (
     AUTO_ACCEPT_SCORE,
@@ -512,6 +516,143 @@ class TestMatchQuery:
         q = TrackQuery(title="t", artist="a", album="b", duration=100.0)
         result = await match_query([_BoomProvider()], q, limit=10, top_n=5, include_lyrics=True)
         assert result["decision"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# raw payload 缓存测试 — fetch_lyrics_cached + PayloadCache 语义
+# ---------------------------------------------------------------------------
+
+
+class _CountingFakeProvider(LyricProvider):
+    """_FakeProvider 的计数版：记录 fetch_lyrics 被调次数（验证缓存命中）。"""
+
+    def __init__(
+        self,
+        source: str,
+        payload: dict[str, Any] | None,
+    ):
+        self.source = source
+        self._payload = payload
+        self.fetch_call_count = 0
+
+    async def search(self, q: TrackQuery, limit: int) -> list[Candidate]:
+        return []
+
+    async def detail(self, candidates: list[Candidate]) -> list[Candidate]:
+        return candidates
+
+    async def fetch_lyrics(self, candidate: Candidate) -> dict[str, Any] | None:
+        self.fetch_call_count += 1
+        return self._payload
+
+    def lyric_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+
+@pytest.fixture(autouse=True)
+def isolate_payload_cache(tmp_path: Path) -> Path:
+    """每个测试把进程级 payload cache 单例指向 tmp_path，隔离落盘。
+
+    autouse：覆盖所有测试（含既有 match_query / 路由测试），防止 runner 走
+    fetch_lyrics_cached 时把缓存写到真实 db 同级目录污染。用完重置回 None
+    （下次 get 重建到真实 db 旁，不跨测试泄漏）。
+
+    需要拿缓存目录路径的测试可直接请求本 fixture（返回 tmp_path）。
+    """
+    reset_payload_cache_for_test(tmp_path / "lyric_cache")
+    yield tmp_path
+    reset_payload_cache_for_test(None)
+
+
+class TestPayloadCache:
+    """fetch_lyrics_cached：命中即不回源；decrypt_error 跳过；TTL 过期回源。"""
+
+    async def test_cache_hit_skips_fetch(self, isolate_payload_cache: Path) -> None:
+        """同 candidate 两次调 fetch_lyrics_cached → fetch_lyrics 只调一次。"""
+        provider = _CountingFakeProvider("netease", {"yrc": {"lyric": "x"}, "code": 200})
+        cand = Candidate(
+            id=12345, title="t", artists=["a"], album="b",
+            duration_ms=1000, source="netease",
+        )
+        first = await fetch_lyrics_cached(provider, cand)
+        second = await fetch_lyrics_cached(provider, cand)
+        assert first == {"yrc": {"lyric": "x"}, "code": 200}
+        assert second == first  # 第二次命中缓存，返回同值
+        assert provider.fetch_call_count == 1  # 只回源一次
+
+    async def test_cache_miss_then_hit(self, isolate_payload_cache: Path) -> None:
+        """首次 miss 回源落盘，第二次命中。"""
+        provider = _CountingFakeProvider("netease", {"lrc": {"lyric": "y"}})
+        cand = Candidate(
+            id=67890, title="t", artists=["a"], album="b",
+            duration_ms=1000, source="netease",
+        )
+        await fetch_lyrics_cached(provider, cand)
+        assert provider.fetch_call_count == 1
+        await fetch_lyrics_cached(provider, cand)
+        assert provider.fetch_call_count == 1  # 命中，没多调
+
+    async def test_decrypt_error_not_cached(self, isolate_payload_cache: Path) -> None:
+        """QQ decrypt_error payload 不落盘（允许后续重试命中真实数据）。"""
+        cache = get_payload_cache()
+        decrypt_err = {
+            "_qrc_xml": "",
+            "_provider_source": "qq",
+            "_qrc_status": "decrypt_error: ValueError: bad hex",
+        }
+        await cache.set("qq", 11111, decrypt_err)
+        # set 跳过 decrypt_error → get 应 miss
+        assert await cache.get("qq", 11111) is None
+        # 文件不应存在
+        assert not (isolate_payload_cache / "lyric_cache" / "qq_11111.json").exists()
+
+    async def test_placeholder_marker_cached(self, isolate_payload_cache: Path) -> None:
+        """QQ placeholder marker（暂无歌词）缓存——省重复探测。"""
+        cache = get_payload_cache()
+        placeholder = {
+            "_qrc_xml": "",
+            "_provider_source": "qq",
+            "_qrc_status": "placeholder",
+        }
+        await cache.set("qq", 22222, placeholder)
+        hit = await cache.get("qq", 22222)
+        assert hit == placeholder
+
+    async def test_ttl_expiry_refetches(self, isolate_payload_cache: Path) -> None:
+        """mtime 超过 TTL → get 返回 None（回源）。"""
+        import os
+
+        cache = get_payload_cache()
+        await cache.set("netease", 33333, {"yrc": {"lyric": "z"}})
+        p = isolate_payload_cache / "lyric_cache" / "netease_33333.json"
+        assert p.exists()
+        # 把 mtime 拨回 8 天前（> 7 天 TTL）
+        old_mtime = os.path.getmtime(p) - 8 * 86400
+        os.utime(p, (old_mtime, old_mtime))
+        assert await cache.get("netease", 33333) is None
+
+    async def test_no_candidate_id_no_cache(self, isolate_payload_cache: Path) -> None:
+        """candidate.id 为空 → fetch_lyrics_cached 返回 None，不回源不缓存。"""
+        provider = _CountingFakeProvider("netease", {"yrc": {"lyric": "x"}})
+        cand = Candidate(
+            id=0, title="t", artists=["a"], album="b",
+            duration_ms=1000, source="netease",
+        )
+        result = await fetch_lyrics_cached(provider, cand)
+        assert result is None
+        assert provider.fetch_call_count == 0
+
+    async def test_none_payload_not_cached(self, isolate_payload_cache: Path) -> None:
+        """provider 返回 None（无词/网络失败）→ 不落盘，下次回源。"""
+        provider = _CountingFakeProvider("netease", None)
+        cand = Candidate(
+            id=44444, title="t", artists=["a"], album="b",
+            duration_ms=1000, source="netease",
+        )
+        first = await fetch_lyrics_cached(provider, cand)
+        second = await fetch_lyrics_cached(provider, cand)
+        assert first is None and second is None
+        assert provider.fetch_call_count == 2  # None 不缓存，两次都回源
 
 
 # ---------------------------------------------------------------------------

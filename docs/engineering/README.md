@@ -13,6 +13,9 @@
 - [`Tailwind-v4集成陷阱集.md`](./frontend/Tailwind-v4集成陷阱集.md) — 三类 v4 集成陷阱索引:①v3 config 残留 ②theme 双源冲突(bg-bg-*/data-theme) ③Preflight 刷新黑框,每项根因+修复+真源指针
 - [`刷新黑框-Preflight-border与reduced-motion.md`](./frontend/刷新黑框-Preflight-border与reduced-motion.md) — F5 刷新瞬时黑框根因(Preflight `border:0 solid` × border-color 过渡 × reduce-motion),定位弯路 + 排查 checklist
 
+### backend/ — 后端
+- [`在线匹配缓存.md`](./backend/在线匹配缓存.md) — 在线歌词匹配 raw payload 磁盘缓存:瓶颈在网络非 CPU、键=provider:id(永久稳定)、值=raw payload(尊重 QQ decrypt_error 不缓存语义)、TTL 7 天、注入 provider 层覆盖 match/preview/QQ 探测三处
+
 ## 新文档写入规则
 
 1. 新文档按"领域"而非"文件名"归类(如 `governance/`、`frontend/`、`backend/`)

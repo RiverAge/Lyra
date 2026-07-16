@@ -29,7 +29,7 @@ from backend.config import get_settings
 from backend.index.store import get_store
 from backend.lyrics.lyric_match.converters import payload_to_ttml, qrc_xml_to_ttml
 from backend.lyrics.lyric_match.lyrics_io import lyric_payload_has_text, read_audio_query
-from backend.lyrics.lyric_match.providers import LyricProvider
+from backend.lyrics.lyric_match.providers import LyricProvider, fetch_lyrics_cached
 from backend.lyrics.lyric_match.runner import match_query_with_payload
 from backend.lyrics.lyric_match.types import Candidate
 
@@ -282,7 +282,7 @@ async def lyrics_preview(
         )
         # 单 provider 场景：直接取第一个（_build_providers 保证按 slug 构造）
         provider = provider_instances[0]
-        payload = await provider.fetch_lyrics(minimal)
+        payload = await fetch_lyrics_cached(provider, minimal)
     finally:
         await _close_providers(provider_instances)
 

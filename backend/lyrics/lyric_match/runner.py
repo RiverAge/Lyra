@@ -36,7 +36,7 @@ from backend.lyrics.lyric_match.lyrics_io import (
     save_raw_payload,
     save_ttml,
 )
-from backend.lyrics.lyric_match.providers import LyricProvider
+from backend.lyrics.lyric_match.providers import LyricProvider, fetch_lyrics_cached
 from backend.lyrics.lyric_match.scoring import decision, score_candidate
 from backend.lyrics.lyric_match.types import (
     REVIEW_SCORE,
@@ -229,7 +229,7 @@ async def _fetch_best_with_qq_fallback(
     """
     best = candidates[0]
     provider = _provider_for_candidate(providers, best)
-    lyric_payload = await provider.fetch_lyrics(best) if provider else None
+    lyric_payload = await fetch_lyrics_cached(provider, best) if provider else None
     lyric_info = provider.lyric_summary(lyric_payload) if (provider and lyric_payload) else None
 
     qq_provider = next((p for p in providers if p.source == "qq"), None)
@@ -265,7 +265,7 @@ async def _fetch_best_with_qq_fallback(
             for c in netease_cands:
                 if c.score < REVIEW_SCORE:
                     break
-                np = await netease_provider.fetch_lyrics(c)
+                np = await fetch_lyrics_cached(netease_provider, c)
                 if np and lyric_payload_has_text(np):
                     return best, np, netease_provider.lyric_summary(np), "netease_line", None
 
