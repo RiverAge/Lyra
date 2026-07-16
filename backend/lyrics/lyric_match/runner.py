@@ -57,13 +57,28 @@ async def resolve_candidates(
     dedup is not done (different id spaces). A provider that throws is skipped
     so one broken source never aborts the whole match. Scoring (sync, pure) is
     applied uniformly across all providers' candidates.
+
+    search+detail 走 candidate_cache（per provider × 查询指纹）：同一首歌第二
+    次点「在线匹配」命中缓存，跳过全部 search/detail 网络往返（payload_cache
+    只盖了最后的拉词，省不掉大头）。命中后照常 score_candidate 打分（纯 CPU）。
+    缓存 miss/损坏/过期 → 回源 search+detail 再 set。异常路径不缓存（允许重试）。
     """
+    from backend.lyrics.lyric_match.candidate_cache import get_candidate_cache
+
+    cache = get_candidate_cache()
     scored: list[Candidate] = []
     for provider in providers:
         try:
-            cands = await provider.search(q, limit)
-            if cands:
-                cands = await provider.detail(cands)
+            cached = await cache.get(provider.source, q, limit)
+            if cached is not None:
+                cands = cached
+            else:
+                cands = await provider.search(q, limit)
+                if cands:
+                    cands = await provider.detail(cands)
+                # 空列表也缓存（「搜不到」是稳定结果，省重复探测）。异常路径
+                #（上面的 try/except 跳过）不走到这里，不会把异常结果缓存。
+                await cache.set(provider.source, q, limit, cands)
         except Exception:
             continue
         for c in cands:

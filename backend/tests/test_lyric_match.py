@@ -26,6 +26,10 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from backend.index.store import IndexStore, set_store
+from backend.lyrics.lyric_match.candidate_cache import (
+    get_candidate_cache,
+    reset_candidate_cache_for_test,
+)
 from backend.lyrics.lyric_match.converters import payload_to_ttml, qrc_xml_to_ttml
 from backend.lyrics.lyric_match.crypto.tripledes_qq import decrypt_qrc
 from backend.lyrics.lyric_match.crypto.weapi_netease import weapi_encrypt_with_key
@@ -560,17 +564,19 @@ class _CountingFakeProvider(LyricProvider):
 
 @pytest.fixture(autouse=True)
 def isolate_payload_cache(tmp_path: Path) -> Path:
-    """每个测试把进程级 payload cache 单例指向 tmp_path，隔离落盘。
+    """每个测试把进程级 payload cache + candidate cache 单例指向 tmp_path，隔离落盘。
 
     autouse：覆盖所有测试（含既有 match_query / 路由测试），防止 runner 走
-    fetch_lyrics_cached 时把缓存写到真实 db 同级目录污染。用完重置回 None
-    （下次 get 重建到真实 db 旁，不跨测试泄漏）。
+    fetch_lyrics_cached / resolve_candidates 时把缓存写到真实 db 同级目录污染。
+    用完重置回 None（下次 get 重建到真实 db 旁，不跨测试泄漏）。
 
     需要拿缓存目录路径的测试可直接请求本 fixture（返回 tmp_path）。
     """
     reset_payload_cache_for_test(tmp_path / "lyric_cache")
+    reset_candidate_cache_for_test(tmp_path / "lyric_cache" / "cands")
     yield tmp_path
     reset_payload_cache_for_test(None)
+    reset_candidate_cache_for_test(None)
 
 
 class TestPayloadCache:
@@ -662,6 +668,147 @@ class TestPayloadCache:
         second = await fetch_lyrics_cached(provider, cand)
         assert first is None and second is None
         assert provider.fetch_call_count == 2  # None 不缓存，两次都回源
+
+
+class _CountingSearchProvider(LyricProvider):
+    """_CountingFakeProvider 的 search 计数版：记录 search/detail 调用次数
+    （验证 resolve_candidates 命中 candidate cache 跳过 search+detail）。"""
+
+    def __init__(
+        self,
+        source: str,
+        cands: list[Candidate],
+    ):
+        self.source = source
+        self._cands = cands
+        self.search_call_count = 0
+        self.detail_call_count = 0
+
+    async def search(self, q: TrackQuery, limit: int) -> list[Candidate]:
+        self.search_call_count += 1
+        return list(self._cands)
+
+    async def detail(self, candidates: list[Candidate]) -> list[Candidate]:
+        self.detail_call_count += 1
+        return candidates
+
+    async def fetch_lyrics(self, candidate: Candidate) -> dict[str, Any] | None:
+        return None
+
+    def lyric_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+
+class TestCandidateCache:
+    """resolve_candidates 的 search+detail 缓存：命中即跳过全部网络；空列表也缓存。"""
+
+    async def test_cache_hit_skips_search_and_detail(
+        self, isolate_payload_cache: Path,
+    ) -> None:
+        """同 q 两次 resolve_candidates → provider.search + detail 只各调一次。"""
+        from backend.lyrics.lyric_match.runner import resolve_candidates
+
+        cands = [
+            Candidate(
+                id=100, title="梦", artists=["张信哲"], album="人生",
+                duration_ms=240000, source="netease",
+            ),
+        ]
+        provider = _CountingSearchProvider("netease", cands)
+        q = TrackQuery(title="梦", artist="张信哲", album="人生", duration=240.0)
+
+        first = await resolve_candidates([provider], q, limit=10)
+        second = await resolve_candidates([provider], q, limit=10)
+
+        assert len(first) == 1 and first[0].id == 100
+        # 候选内容一致（命中缓存后重建的 Candidate，id/title 等字段全保留）
+        assert second[0].id == 100
+        assert second[0].title == "梦"
+        # 第二次命中缓存，search/detail 没多调
+        assert provider.search_call_count == 1
+        assert provider.detail_call_count == 1
+
+    async def test_cache_preserves_raw_for_scoring(
+        self, isolate_payload_cache: Path,
+    ) -> None:
+        """命中缓存重建的 Candidate 保留 raw 字段——score_candidate 读 raw，
+        缓存 round-trip 不能丢 raw 否则打分回归。"""
+        from backend.lyrics.lyric_match.runner import resolve_candidates
+
+        cands = [
+            Candidate(
+                id=200, title="t", artists=["a"], album="b",
+                duration_ms=1000, source="netease",
+                raw={"artists": [{"name": "a"}, {"name": "feat"}]},
+            ),
+        ]
+        provider = _CountingSearchProvider("netease", cands)
+        q = TrackQuery(title="t", artist="a", album="b", duration=1.0)
+
+        await resolve_candidates([provider], q, limit=10)  # 落盘
+        # 命中缓存路径：第二次不再调 search，直接从缓存重建 Candidate
+        second = await resolve_candidates([provider], q, limit=10)
+        assert provider.search_call_count == 1  # 命中，没回源
+        rebuilt = second[0]
+        # raw 字段 round-trip 保留——score_candidate 读 raw.get("artists")
+        assert rebuilt.raw.get("artists") == [
+            {"name": "a"}, {"name": "feat"},
+        ]
+        # 打分能用（不抛、产 score）
+        assert rebuilt.score >= 0.0
+
+    async def test_empty_result_cached(self, isolate_payload_cache: Path) -> None:
+        """search 返回空（搜不到）也缓存——第二次不再回源探测。"""
+        from backend.lyrics.lyric_match.runner import resolve_candidates
+
+        provider = _CountingSearchProvider("netease", [])
+        q = TrackQuery(title="搜不到的歌", artist="不存在的艺人", duration=1.0)
+
+        first = await resolve_candidates([provider], q, limit=10)
+        second = await resolve_candidates([provider], q, limit=10)
+
+        assert first == []
+        assert second == []
+        # 空列表也缓存，第二次不回源
+        assert provider.search_call_count == 1
+
+    async def test_different_query_no_cross_hit(
+        self, isolate_payload_cache: Path,
+    ) -> None:
+        """不同 q（title 不同）→ 不同指纹 → 不命中，各自回源。"""
+        from backend.lyrics.lyric_match.runner import resolve_candidates
+
+        provider = _CountingSearchProvider("netease", [
+            Candidate(id=1, title="A", artists=["x"], album="",
+                      duration_ms=1000, source="netease"),
+        ])
+        q1 = TrackQuery(title="A", artist="x", duration=1.0)
+        q2 = TrackQuery(title="B", artist="x", duration=1.0)
+
+        await resolve_candidates([provider], q1, limit=10)
+        await resolve_candidates([provider], q2, limit=10)
+
+        # 两个不同 q 各回源一次
+        assert provider.search_call_count == 2
+
+    async def test_ttl_expiry_refetches(self, isolate_payload_cache: Path) -> None:
+        """mtime 超过 TTL → get 返回 None（回源）。"""
+        import os
+
+        cache = get_candidate_cache()
+        q = TrackQuery(title="t", artist="a", duration=1.0)
+        await cache.set("netease", q, 10, [
+            Candidate(id=5, title="t", artists=["a"], album="",
+                      duration_ms=1000, source="netease"),
+        ])
+        # 找到刚写的缓存文件（source_fp.json）
+        files = list((isolate_payload_cache / "lyric_cache" / "cands").glob("netease_*.json"))
+        assert len(files) == 1
+        p = files[0]
+        # 拨回 8 天前（> 7 天 TTL）
+        old_mtime = os.path.getmtime(p) - 8 * 86400
+        os.utime(p, (old_mtime, old_mtime))
+        assert await cache.get("netease", q, 10) is None
 
 
 # ---------------------------------------------------------------------------
