@@ -136,7 +136,13 @@ html {
   font-feature-settings: "cv02", "cv05", "cv11", "ss01", "tnum";
 }
 
-/* ---- 无障碍：prefers-reduced-motion 关闭动画 ---- */
+
+/* ---- 无障碍：prefers-reduced-motion 关闭动画 ----
+   根因：Preflight `border: 0 solid` 让所有元素 border-style:solid 就位，仅 border-width:0。
+   某些元素 transition border-color（.card-hover/.input-ring 等），reduce 下 transition 被压成
+   瞬时，border-color 过渡的那一帧（accent 墨黑 → 目标色）被冻结/瞬显成黑框。reduce 下
+   用户既看不到过渡，border-color 过渡也无意义，直接关掉其 transition-property 即可根治，
+   不动 Preflight、不影响正常用户的 border 过渡、不破坏无障碍。 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -144,6 +150,7 @@ html {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
     transition-duration: 0.01ms;
+    transition-property: none;
   }
 }
 
