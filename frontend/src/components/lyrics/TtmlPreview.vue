@@ -67,12 +67,24 @@
             <span :class="idx === sync.currentIndex.value ? 'text-secondary' : 'text-tertiary'">{{ line.transliteration[0].text }}</span>
           </template>
         </p>
-        <!-- 翻译行（整行小字，当前行高亮） -->
+        <!-- 翻译行（逐字翻译逐字高亮 / 逐行翻译整行小字） -->
         <p
           v-if="line.translation"
           class="whitespace-pre-wrap break-words text-[11px] leading-snug"
-          :class="idx === sync.currentIndex.value ? 'text-secondary' : 'text-tertiary'"
-        >{{ line.translation }}</p>
+        >
+          <template v-if="Array.isArray(line.translation) && line.translation.length > 1">
+            <span
+              v-for="(sp, si) in line.translation"
+              :key="si"
+              :class="isTransSpanActive(idx, si) ? 'font-medium text-accent' : 'text-tertiary'"
+            >{{ sp.text }}</span>
+          </template>
+          <template v-else>
+            <span :class="idx === sync.currentIndex.value ? 'text-secondary' : 'text-tertiary'">{{
+              Array.isArray(line.translation) ? line.translation[0]?.text : line.translation
+            }}</span>
+          </template>
+        </p>
       </div>
       <p v-if="sync.lines.value.length === 0" class="p-4 text-sm text-tertiary">
         未提取到歌词行
@@ -131,9 +143,12 @@ const hasTransliteration = computed(() =>
   sync.lines.value.some((l) => l.transliteration && l.transliteration.length > 0),
 )
 
-/** 是否有翻译行（任一行 translation 非空） */
+/** 是否有翻译行（任一行 translation 非空：string 非空 或 spans 非空） */
 const hasTranslation = computed(() =>
-  sync.lines.value.some((l) => !!l.translation),
+  sync.lines.value.some((l) => {
+    if (!l.translation) return false
+    return typeof l.translation === "string" ? !!l.translation : l.translation.length > 0
+  }),
 )
 
 /** 行级 class：当前行 + 纯文本行 → 整行 inset-bar-active；当前行 + 逐字行 → 轻底色；非当前 → 无 */
@@ -151,6 +166,11 @@ function isSpanActive(idx: number, si: number): boolean {
 /** 注音 span 是否当前活跃：行匹配 + 注音 span 匹配 */
 function isRomaSpanActive(idx: number, si: number): boolean {
   return idx === sync.currentIndex.value && si === sync.currentTransliterationSpanIndex.value
+}
+
+/** 翻译 span 是否当前活跃：行匹配 + 翻译 span 匹配 */
+function isTransSpanActive(idx: number, si: number): boolean {
+  return idx === sync.currentIndex.value && si === sync.currentTranslationSpanIndex.value
 }
 
 // 当前行变化 → 滚到视口中央

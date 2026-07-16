@@ -27,7 +27,7 @@ export interface LyricSpan {
 /** 单行歌词：文本 + 起止毫秒 + 逐字 spans（纯文本行为空数组）。
  *
  * key：行 key（TTML <p key="L1">），用于配对 translation/transliteration 行。
- * translation：整行翻译文本（逐行，无逐字）。
+ * translation：翻译——逐字翻译为 LyricSpan[]（QQ contentts 逐字），逐行翻译为 string（netease tlyric）。
  * transliteration：注音/罗马音 spans（逐字=多 span；逐行=单 span 整行）。
  * 三者皆可选——无翻译/注音的行对应字段 undefined。
  */
@@ -37,7 +37,7 @@ export interface LyricLine {
   endMs: number
   spans: LyricSpan[]
   key?: string
-  translation?: string
+  translation?: string | LyricSpan[]
   transliteration?: LyricSpan[]
 }
 
@@ -104,7 +104,7 @@ export function parseTtml(ttml: string): LyricLine[] {
   if (!body) return []
 
   const mainLines: LyricLine[] = []
-  const translationByKey = new Map<string, string>()
+  const translationByKey = new Map<string, string | LyricSpan[]>()
   const transliterationByKey = new Map<string, LyricSpan[]>()
 
   for (const div of Array.from(body.getElementsByTagName("div"))) {
@@ -156,7 +156,7 @@ export function parseTtml(ttml: string): LyricLine[] {
 /** 读老式 <head><metadata> 的 translation/transliteration track（<text for="Lx">）作 fallback。 */
 function readMetadataTracks(
   doc: Document,
-  translationByKey: Map<string, string>,
+  translationByKey: Map<string, string | LyricSpan[]>,
   transliterationByKey: Map<string, LyricSpan[]>,
 ): void {
   const metadata = doc.querySelector("head > metadata")
@@ -172,9 +172,15 @@ function readMetadataTracks(
       const key = tx.getAttribute("for") ?? ""
       if (!key) continue
       if (role === "translation") {
-        // 翻译：纯文本整行（LyricLine.translation 是 string，不存逐字）
-        const text = tx.textContent?.trim() ?? ""
-        if (text) translationByKey.set(key, text)
+        // 翻译：优先读 <text for> 内逐字 <span begin end>（QQ contentts 逐字翻译）；
+        // 无 span 则纯文本整行（netease tlyric 逐行）
+        const spans = parseSpans(tx)
+        if (spans.length > 0) {
+          translationByKey.set(key, spans)
+        } else {
+          const text = tx.textContent?.trim() ?? ""
+          if (text) translationByKey.set(key, text)
+        }
       } else {
         // 注音：优先读 <text for> 内逐字 <span begin end>（QQ contentroma 逐字罗马音）；
         // 无 span 则纯文本整行存单 span（netease romalrc 逐行，时间 0 由逐字高亮逻辑兜底）
@@ -246,6 +252,8 @@ export function useLyricSync(
   const currentSpanIndex = ref(-1)
   /** 当前行注音 span 索引（逐字注音高亮；无注音/逐行注音返回 -1 整行高亮） */
   const currentTransliterationSpanIndex = ref(-1)
+  /** 当前行翻译 span 索引（逐字翻译高亮；无翻译/逐行翻译返回 -1 整行高亮） */
+  const currentTranslationSpanIndex = ref(-1)
   const parseError = ref<string | null>(null)
 
   function refresh(t: string | null): void {
@@ -264,6 +272,7 @@ export function useLyricSync(
     currentIndex.value = -1
     currentSpanIndex.value = -1
     currentTransliterationSpanIndex.value = -1
+    currentTranslationSpanIndex.value = -1
   }
 
   watch(ttml, (v) => refresh(v), { immediate: true })
@@ -274,6 +283,7 @@ export function useLyricSync(
       currentIndex.value = -1
       currentSpanIndex.value = -1
       currentTransliterationSpanIndex.value = -1
+      currentTranslationSpanIndex.value = -1
       return
     }
     const i = findCurrentLineIndex(lines.value, t)
@@ -291,7 +301,21 @@ export function useLyricSync(
     if (ti !== currentTransliterationSpanIndex.value) {
       currentTransliterationSpanIndex.value = ti
     }
+    // 当前行翻译 span 索引（逐字翻译；逐行翻译(string)/无翻译返回 -1）
+    const trLine = i >= 0 ? lines.value[i].translation : undefined
+    const trArr = Array.isArray(trLine) ? trLine : undefined
+    const tri = trArr ? findCurrentSpanIndex(trArr, t) : -1
+    if (tri !== currentTranslationSpanIndex.value) {
+      currentTranslationSpanIndex.value = tri
+    }
   })
 
-  return { lines, currentIndex, currentSpanIndex, currentTransliterationSpanIndex, parseError }
+  return {
+    lines,
+    currentIndex,
+    currentSpanIndex,
+    currentTransliterationSpanIndex,
+    currentTranslationSpanIndex,
+    parseError,
+  }
 }
