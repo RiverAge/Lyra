@@ -1,75 +1,116 @@
 <template>
-  <div class="mx-auto max-w-6xl px-6 py-6">
+  <div class="mx-auto max-w-6xl px-6 py-8">
     <!-- 页头 -->
-    <div class="mb-6 flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-2xl font-semibold text-primary">
-          曲库
-        </h1>
-        <p class="mt-1 text-sm text-secondary">
-          浏览音乐库内的曲目
-        </p>
-      </div>
-      <div class="flex items-center gap-3">
-        <BaseInput
-          v-model="searchKeyword"
-          placeholder="搜索曲目…"
-          icon="Search"
-          class="w-48"
-        />
-        <BaseButton
-          variant="ghost"
-          size="md"
-          icon="RefreshCw"
-          icon-only
-          title="刷新"
-          @click="reload"
-        />
+    <div class="mb-7">
+      <h1 class="mb-2 text-3xl font-semibold tracking-tight text-primary">
+        曲库
+      </h1>
+      <p class="text-sm text-secondary">
+        音乐元数据与歌词管理工具 · 当前共 {{ totalText }} 首曲目
+      </p>
+      <div class="mt-3.5 flex items-center gap-4 text-xs text-tertiary">
+        <span class="pill"><span class="dot" />后端已连接</span>
+        <span class="meta-item"><b>扫描</b> {{ scanStatusText }}</span>
+        <span class="meta-item"><b>转码</b> ALAC → Opus 实时</span>
       </div>
     </div>
 
-    <!-- 扫描进度（顶部条，播放器已全局化） -->
-    <div class="mb-4">
-      <ScanProgress />
+    <!-- 统计卡 -->
+    <StatsCards :stats="libraryStore.stats" class="mb-6" />
+
+    <!-- 扫描进度（自带 card，scanning 时展开） -->
+    <ScanProgress v-if="showScanner" class="mb-6" />
+
+    <!-- 筛选工具条 + 右侧操作一行 -->
+    <div class="toolbar-row">
+      <FilterBar
+        class="flex-1"
+        :filters="libraryStore.filters"
+        :has-filters="libraryStore.hasFilters"
+        @set-filter="onSetFilter"
+        @clear-filters="onClearFilters"
+      />
+      <div class="flex items-center gap-2 pb-3.5">
+        <BaseButton variant="ghost" size="sm" icon="RefreshCw" icon-only title="刷新" @click="reload" />
+      </div>
     </div>
 
-    <!-- 主体：卡片网格 -->
-    <TrackList
+    <!-- 表格 -->
+    <TrackTable
       :tracks="libraryStore.items"
       :loading="libraryStore.loading"
       :error="libraryStore.error"
       :page="libraryStore.page"
-      :total-pages="libraryStore.totalPages"
-      :total="libraryStore.total"
+      :page-size="libraryStore.limit"
+      :has-filters="libraryStore.hasFilters"
       @navigate="onNavigate"
-      @prev="libraryStore.prevPage"
-      @next="libraryStore.nextPage"
       @retry="reload"
     />
+
+    <!-- 分页 -->
+    <div class="mt-5 flex items-center justify-between text-sm text-secondary">
+      <div>{{ pagerText }}</div>
+      <div class="flex items-center">
+        <button
+          class="pg"
+          :disabled="libraryStore.page <= 1"
+          @click="libraryStore.prevPage"
+        >‹</button>
+        <button class="pg active">{{ libraryStore.page }}</button>
+        <span class="px-1 text-xs text-tertiary">/ {{ libraryStore.totalPages }}</span>
+        <button
+          class="pg"
+          :disabled="libraryStore.page >= libraryStore.totalPages"
+          @click="libraryStore.nextPage"
+        >›</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useLibraryStore } from "@/stores/library"
+import type { LibraryFilters } from "@/stores/library"
+import { useScannerStore } from "@/stores/scanner"
 import BaseButton from "@/components/ui/BaseButton.vue"
-import BaseInput from "@/components/ui/BaseInput.vue"
-import TrackList from "@/components/library/TrackList.vue"
+import StatsCards from "@/components/library/StatsCards.vue"
+import FilterBar from "@/components/library/FilterBar.vue"
+import TrackTable from "@/components/library/TrackTable.vue"
 import ScanProgress from "@/components/scanner/ScanProgress.vue"
 
 /**
- * 曲库分页列表视图
- * - 首次进入自动加载第 1 页
- * - 点击 track 卡片 → router.push('/track/' + id)
- * - 搜索框预留（v-model 绑定，当前仅本地状态，后端搜索能力后续接入）
- * - 播放器已全局化为 PlayerDock（App.vue 挂载）
+ * 曲库首页（B 布局重写）
+ *
+ * 布局自上而下：页头 → 统计卡 → 扫描进度 → 筛选条 → 表格 → 分页
+ * - onMounted：loadPage(1) + loadStats()（统计与列表独立加载）
+ * - 筛选：FilterBar → store.setFilter（自动回第 1 页）
+ * - 点击表格行 → /track/:id
  */
-const libraryStore = useLibraryStore()
-const router = useRouter()
 
-const searchKeyword = ref("")
+const libraryStore = useLibraryStore()
+const scannerStore = useScannerStore()
+const router = useRouter()
 
 onMounted(() => {
   void libraryStore.loadPage(1)
+  void libraryStore.loadStats()
+})
+
+// 扫描进度仅在 scanning 或刚扫完时显示（idle 且无进度则隐藏）
+const showScanner = computed(() =>
+  scannerStore.isScanning || scannerStore.totalFiles > 0,
+)
+const scanStatusText = computed(() =>
+  scannerStore.isScanning ? "进行中" : "空闲",
+)
+
+const totalText = computed(() => libraryStore.total.toLocaleString("en-US"))
+
+const pagerText = computed(() => {
+  const limit = libraryStore.limit
+  const start = libraryStore.total > 0 ? (libraryStore.page - 1) * limit + 1 : 0
+  const end = Math.min(libraryStore.page * limit, libraryStore.total)
+  return `显示 ${start}–${end} / 共 ${libraryStore.total.toLocaleString("en-US")} 首`
 })
 
 function onNavigate(id: string): void {
@@ -79,8 +120,77 @@ function onNavigate(id: string): void {
 async function reload(): Promise<void> {
   await libraryStore.reload()
 }
+
+function onSetFilter(key: keyof LibraryFilters, value: string): void {
+  void libraryStore.setFilter(key, value)
+}
+
+function onClearFilters(): void {
+  void libraryStore.clearFilters()
+}
 </script>
 
 <style scoped>
-/* LibraryView 无额外 scoped 样式 */
+/* meta 后代 b 加粗 */
+.meta-item b {
+  color: var(--theme-text-secondary);
+  font-weight: 500;
+}
+
+/* pill 状态点 */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-bg-subtle);
+  border: 1px solid var(--theme-border-default);
+  font-size: 12px;
+  color: var(--theme-text-secondary);
+}
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--theme-success);
+}
+
+/* 筛选条 + 右侧操作一行：FilterBar 用 flex-1 占满，页面级 margin/border 在此定义 */
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--theme-border-default);
+}
+
+/* 分页按钮：多伪类组合（:hover:not(:disabled):not(.active)）保留 scoped */
+.pg {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--theme-border-default);
+  background-color: var(--theme-bg-surface);
+  font-size: 13px;
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--animate-duration-hover) ease, color var(--animate-duration-hover) ease;
+}
+.pg:hover:not(:disabled):not(.active) {
+  background-color: var(--theme-bg-hover);
+  color: var(--theme-text-primary);
+}
+.pg:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pg.active {
+  background-color: var(--theme-accent);
+  color: var(--theme-on-accent);
+  border-color: var(--theme-accent);
+}
 </style>

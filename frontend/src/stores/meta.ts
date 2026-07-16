@@ -11,7 +11,7 @@ import type {
   AuthoritativeFields,
   CreditsResponse,
   DiffResponse,
-  FieldMap,
+  FieldMapResponse,
   FieldStatusKind,
   FieldWithStatus,
   WriteResponse,
@@ -53,8 +53,8 @@ export const useMetaStore = defineStore("meta", () => {
   const writeError = ref<string | null>(null)
   const writeResult = ref<WriteResponse | null>(null)
 
-  // ---- 字段映射清单（用于展示字段名→标签映射，可选懒载） ----
-  const fieldMap = ref<FieldMap | null>(null)
+  // ---- 字段映射清单（语义字段名→各容器 mutagen key，供前端构建反向映射）----
+  const fieldMap = ref<FieldMapResponse | null>(null)
 
   // ---- 统一拉取 ----
   const fetchAllLoading = ref(false)
@@ -172,8 +172,8 @@ export const useMetaStore = defineStore("meta", () => {
     }
   }
 
-  /** 拉取字段映射清单（可选） */
-  async function loadFieldMap(): Promise<FieldMap | null> {
+  /** 拉取字段映射清单（语义→mutagen key，失败不阻塞主流程） */
+  async function loadFieldMap(): Promise<FieldMapResponse | null> {
     try {
       const res = await fetchFields()
       fieldMap.value = res

@@ -137,6 +137,124 @@ class IndexStore:
             row = await cursor.fetchone()
             return int(row["cnt"]) if row else 0
 
+    # ---- 聚合统计 ----
+
+    async def library_stats(self) -> dict[str, int | float]:
+        """曲库聚合统计（供首页统计卡）。
+
+        Returns:
+            {track_count, album_count, total_duration_sec, lossless_ratio}
+            - lossless_ratio: 0.0~1.0（无损曲目数 / 曲目总数，空库为 0.0）
+        """
+        # 无损 codec 白名单（大小写不敏感：入库逻辑存小写，如 alac/flac）
+        lossless_codecs = ("ALAC", "FLAC", "WAV", "APE", "DSD")
+        placeholders = ",".join("?" for _ in lossless_codecs)
+
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS track_count,
+                    COUNT(DISTINCT album) FILTER (WHERE album != '') AS album_count,
+                    COALESCE(SUM(duration), 0) / 1000 AS total_duration_sec,
+                    COUNT(*) FILTER (WHERE UPPER(codec) IN ({placeholders})) AS lossless_count
+                FROM tracks
+                """,
+                lossless_codecs,
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return {
+                    "track_count": 0,
+                    "album_count": 0,
+                    "total_duration_sec": 0,
+                    "lossless_ratio": 0.0,
+                }
+            track_count = int(row["track_count"])
+            lossless_count = int(row["lossless_count"])
+            return {
+                "track_count": track_count,
+                "album_count": int(row["album_count"]),
+                "total_duration_sec": int(row["total_duration_sec"]),
+                "lossless_ratio": round(lossless_count / track_count, 4) if track_count else 0.0,
+            }
+
+    @staticmethod
+    def _build_track_filters(
+        *,
+        artist: str | None,
+        album: str | None,
+        codec: str | None,
+    ) -> tuple[str, list[object]]:
+        """构造 tracks 过滤 WHERE 子句（参数化）。
+
+        文本字段（artist/album）用 LIKE 模糊匹配，codec 精确匹配。
+        返回 (where_sql, params)；无过滤时 where_sql 为空串。
+        """
+        clauses: list[str] = []
+        params: list[object] = []
+        if artist:
+            clauses.append("artist LIKE ?")
+            params.append(f"%{artist}%")
+        if album:
+            clauses.append("album LIKE ?")
+            params.append(f"%{album}%")
+        if codec:
+            clauses.append("UPPER(codec) = UPPER(?)")
+            params.append(codec)
+        if not clauses:
+            return "", []
+        where_sql = "WHERE " + " AND ".join(clauses)
+        return where_sql, params
+
+    async def count_tracks_filtered(
+        self,
+        *,
+        artist: str | None = None,
+        album: str | None = None,
+        codec: str | None = None,
+    ) -> int:
+        """按过滤条件 count tracks（供分页 total）。无过滤等价于 count_tracks。"""
+        where_sql, params = self._build_track_filters(
+            artist=artist, album=album, codec=codec
+        )
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute(
+                f"SELECT COUNT(*) AS cnt FROM tracks {where_sql}",
+                params,
+            )
+            row = await cursor.fetchone()
+            return int(row["cnt"]) if row else 0
+
+    async def list_tracks_filtered(
+        self,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        artist: str | None = None,
+        album: str | None = None,
+        codec: str | None = None,
+    ) -> list[sqlite3.Row]:
+        """按过滤条件分页查询 tracks。无过滤等价于 list_tracks。
+
+        Returns:
+            sqlite3.Row 列表，按 id 升序。
+        """
+        where_sql, params = self._build_track_filters(
+            artist=artist, album=album, codec=codec
+        )
+        params = [*params, limit, offset]
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute(
+                f"SELECT * FROM tracks {where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
+                params,
+            )
+            rows = await cursor.fetchall()
+            return list(rows)
+
     async def list_tracks(
         self,
         *,

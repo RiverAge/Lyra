@@ -31,6 +31,7 @@ from backend.lyrics.lyric_match.converters import payload_to_ttml, qrc_xml_to_tt
 from backend.lyrics.lyric_match.lyrics_io import lyric_payload_has_text, read_audio_query
 from backend.lyrics.lyric_match.providers import LyricProvider
 from backend.lyrics.lyric_match.runner import match_query_with_payload
+from backend.lyrics.lyric_match.types import Candidate
 
 logger = logging.getLogger(__name__)
 
@@ -229,4 +230,66 @@ async def lyrics_match(
         "lyrics": result.get("lyrics"),
         "lyric_source": result.get("lyric_source"),
         "best_ttml": best_ttml,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /lyrics/{track_id}/preview — 按候选拉取 TTML 预览
+# ---------------------------------------------------------------------------
+
+
+@lyrics_router.get("/lyrics/{track_id}/preview")
+async def lyrics_preview(
+    track_id: str,
+    source: str = Query(description="来源 slug：netease / qq"),
+    candidate_id: int = Query(description="候选歌曲 id（match 端点返回的 candidate.id）"),
+) -> dict[str, object]:
+    """按候选拉取 TTML 预览。
+
+    用于前端在「其他候选」里点选任意候选时，按需拉取该候选的歌词 TTML，
+    挂载到预览区（不重跑匹配，只按 candidate.id 取词）。
+
+    依赖：provider.fetch_lyrics 只读 candidate.id（已确认 netease.py/qq.py），
+    所以只需 {id, source} 重建最小 Candidate 即可。
+
+    错误码：
+    - 422 — 非数字 track_id（candidate_id 已由 int Query 保证）
+    - 404 — track 不存在 / 路径越界
+    - 400 — 未知 source slug
+    - 503 — store 未初始化 / library root 未配置
+    """
+    # 校验 track 存在 + 路径安全（预览不读音频 tag，丢弃 track_path）
+    await _resolve_track(track_id)
+
+    # slug 白名单：candidate_to_dict 已规整成 netease/qq，这里拒绝其余
+    if source not in ("netease", "qq"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown source: {source} (supported: netease, qq)",
+        )
+
+    provider_instances = _build_providers([source])
+    try:
+        # fetch_lyrics 只读 candidate.id；source 填 slug 仅供 provider 路由参考
+        minimal = Candidate(
+            id=candidate_id,
+            title="",
+            artists=[],
+            album="",
+            duration_ms=None,
+            source=source,
+        )
+        # 单 provider 场景：直接取第一个（_build_providers 保证按 slug 构造）
+        provider = provider_instances[0]
+        payload = await provider.fetch_lyrics(minimal)
+    finally:
+        await _close_providers(provider_instances)
+
+    ttml = _best_ttml(payload, source)
+
+    return {
+        "track_id": track_id,
+        "candidate_id": candidate_id,
+        "source": source,
+        "ttml": ttml,
     }

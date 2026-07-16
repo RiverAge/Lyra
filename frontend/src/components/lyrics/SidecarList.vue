@@ -35,15 +35,16 @@
       <li
         v-for="item in store.sidecars"
         :key="item.source"
-        class="rounded-md border border-subtle bg-subtle p-3"
+        class="rounded-md border border-line-subtle bg-subtle p-3"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="flex flex-col gap-1">
             <div class="flex items-center gap-2">
-              <span :class="sourceBadgeClass(item.source)" class="rounded-sm px-2 py-0.5 text-xs font-medium">
+              <SourceIcon v-if="hasLogo(item.source)" :source="item.source" :size="14" />
+              <span v-else :class="sourceBadgeClass(item.source)" class="rounded-sm px-2 py-0.5 text-xs font-medium">
                 {{ item.source }}
               </span>
-              <span class="rounded-sm border border-subtle px-1.5 py-0.5 text-xs text-secondary">
+              <span class="rounded-sm border border-line-subtle px-1.5 py-0.5 text-xs text-secondary">
                 {{ item.format }}
               </span>
             </div>
@@ -74,7 +75,7 @@
         </div>
 
         <!-- 展开后的内容预览 -->
-        <div v-if="expanded.has(item.source)" class="mt-2 border-t border-subtle pt-2">
+        <div v-if="expanded.has(item.source)" class="mt-2 border-t border-line-subtle pt-2">
           <TtmlPreview v-if="item.format === 'ttml'" :ttml="item.content" />
           <pre v-else class="max-h-60 overflow-auto whitespace-pre-wrap break-words text-xs text-secondary">{{ truncateContent(item.content, 2000) }}</pre>
         </div>
@@ -130,6 +131,7 @@
 import type { LyricSource, SidecarItem } from "@/apis/lyrics"
 import { useLyricsStore } from "@/stores/lyrics"
 import BaseButton from "@/components/ui/BaseButton.vue"
+import SourceIcon from "@/components/ui/icons/SourceIcon.vue"
 import TtmlPreview from "./TtmlPreview.vue"
 
 /**
@@ -204,7 +206,12 @@ function truncateContent(content: string, max: number): string {
   return content.slice(0, max) + "\n…（已截断）"
 }
 
-/** source 徽章配色：apple=accent / netease=success / qq=warning。 */
+/** source 徽章配色：apple=accent / netease=success / qq=warning。
+ *  netease/qq 有品牌 logo（SourceIcon），apple/未知降级文字徽章。 */
+function hasLogo(source: string): boolean {
+  return source === "netease" || source === "qq"
+}
+
 function sourceBadgeClass(source: LyricSource): string {
   switch (source) {
     case "apple":

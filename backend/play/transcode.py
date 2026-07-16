@@ -91,6 +91,15 @@ def reset_ffmpeg_probe() -> None:
     _ffmpeg_available = None
 
 
+def _read_all(fileobj: object) -> bytes:
+    """读尽 fileobj 的剩余内容（供 run_in_executor 调用）。
+
+    独立函数而非传 `proc.stderr.read` bound method，便于在 proc 被 kill
+    后 pipe 关闭时捕获 ValueError（读已关闭文件）。
+    """
+    return fileobj.read()  # type: ignore[no-any-return]
+
+
 # ---------------------------------------------------------------------------
 # 转码流生成器
 # ---------------------------------------------------------------------------
@@ -120,6 +129,8 @@ async def transcode_stream(
     proc = subprocess.Popen(
         ["ffmpeg",
          "-i", str(file_path),
+         "-vn",  # 丢弃视频流（m4a 常嵌封面图/mov_text，不丢会被默认映射成 theora 视频流，audio 元素无法播放）
+         "-map", "0:a:0",  # 只取第一个音频流（避免多音轨/封面流干扰）
          "-c:a", TRANSCODE_CODEC,
          "-f", TRANSCODE_FORMAT,
          "-v", "error",
@@ -171,8 +182,13 @@ async def transcode_stream(
         producer_thread.join(timeout=5.0)
 
         # 读 stderr（转码结束才读一次，量极小，-v error 抑制噪声）
-        # 放 executor 避免同步阻塞（正常为空，异常时有诊断信息）
-        stderr = await loop.run_in_executor(None, proc.stderr.read)
+        # 放 executor 避免同步阻塞（正常为空，异常时有诊断信息）。
+        # 用 try 吞 ValueError（proc 被 kill 后 pipe fd 可能已关闭，
+        # 读已关闭文件抛 ValueError，不应让清理流程崩溃）。
+        try:
+            stderr = await loop.run_in_executor(None, _read_all, proc.stderr)
+        except ValueError:
+            stderr = b""
         if stderr:
             stderr_text = stderr.decode(errors="replace").strip()
             if proc.returncode != 0:

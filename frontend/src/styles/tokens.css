@@ -3,126 +3,73 @@
 /* ================================================================
  * Lyra Design Tokens
  * 真源: docs/engineering/frontend/设计系统.md
- * 机器落地: Tailwind v4 @theme 块 + CSS 变量主题切换
+ * 机器落地: Tailwind v4 @theme 块 + CSS 变量
  *
- * 设计基调: 暗色优先·品牌色温
- *   - 深蓝黑底（非纯黑，带色温）+ 靛蓝/紫渐变 accent
- *   - 多层阴影分层强化视觉层级
+ * 设计基调: 浅色克制（Linear / Vercel 流派）
+ *   - 暖白底 + 墨黑即强调色（克制到极致，不靠彩色博眼球）
+ *   - 实色发丝线分层，几乎无阴影
  *   - 圆角克制（button/input sm，card lg）
+ *   - 禁渐变、禁发光 glow
+ *   - 单一浅色主题，无暗色分支
  * ================================================================ */
 
-/* ---- 暗色（默认/主调） ---- */
-:root[data-theme="dark"] {
-  --theme-bg-base: #0d0f1a;        /* 深蓝黑，带色温 */
-  --theme-bg-surface: #161924;     /* 卡片层 */
-  --theme-bg-elevated: #1e2233;    /* 最高层：hover/dock/modal */
-  --theme-bg-hover: #232838;       /* hover 态底色 */
-  --theme-bg-subtle: #11141f;      /* 表头/分页栏（比 surface 更沉） */
-  --theme-border-default: rgba(255, 255, 255, 0.06);   /* 降低对比，原 0.08 太抢眼 */
-  --theme-border-subtle: rgba(255, 255, 255, 0.04);
-  --theme-text-primary: #e8eaf0;
-  --theme-text-secondary: #8b90a0;
-  --theme-text-tertiary: #5a5f70;
-  --theme-accent: #6366f1;         /* 靛蓝 */
-  --theme-accent-hover: #7c7ff5;
-  --theme-accent-pressed: #4f52d4;
-  --theme-accent-subtle: rgba(99, 102, 241, 0.12);
-  --theme-accent-gradient: linear-gradient(135deg, #8b5cf6, #6366f1);  /* 紫→蓝渐变 */
-  --theme-on-accent: #ffffff;      /* accent 背景上的文字色 */
-  --theme-success: #22c55e;
-  --theme-success-subtle: rgba(34, 197, 94, 0.12);
-  --theme-warning: #f59e0b;
-  --theme-warning-subtle: rgba(245, 158, 11, 0.12);
-  --theme-danger: #ef4444;
-  --theme-danger-subtle: rgba(239, 68, 68, 0.12);
-  --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --theme-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
-  --theme-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);   /* hover/dock */
-  --theme-shadow-glow: 0 0 0 1px var(--theme-accent-subtle), 0 4px 16px rgba(99, 102, 241, 0.25);  /* focus ring */
-}
+/* ---- 浅色（单一主题，无 data-theme 分支） ---- */
+:root {
+  --theme-bg-base: #fcfcfd;        /* 暖白底，非纯白 */
+  --theme-bg-surface: #ffffff;     /* 卡片层 */
+  --theme-bg-hover: #f3f3f5;       /* hover 态底色 */
+  --theme-bg-subtle: #f7f7f9;      /* 表头/分页栏（比 base 更沉） */
 
-/* ---- 亮色（切换备选，同步新色系） ---- */
-:root[data-theme="light"] {
-  --theme-bg-base: #f8f9fc;        /* 浅蓝灰底 */
-  --theme-bg-surface: #ffffff;     /* 纯白卡片 */
-  --theme-bg-elevated: #ffffff;    /* 亮色下 elevated=surface，靠阴影分层 */
-  --theme-bg-hover: #f1f3f9;
-  --theme-bg-subtle: #f1f3f9;
-  --theme-border-default: rgba(15, 23, 42, 0.08);
-  --theme-border-subtle: rgba(15, 23, 42, 0.05);
-  --theme-text-primary: #1e2233;
-  --theme-text-secondary: #6b7180;
-  --theme-text-tertiary: #9aa0b0;
-  --theme-accent: #6366f1;
-  --theme-accent-hover: #5457e6;
-  --theme-accent-pressed: #4245d8;
-  --theme-accent-subtle: rgba(99, 102, 241, 0.08);
-  --theme-accent-gradient: linear-gradient(135deg, #8b5cf6, #6366f1);
-  --theme-on-accent: #ffffff;
+  /* 实色发丝线（B 用实色，非 rgba） */
+  --theme-border-default: #e8e8ec;
+  --theme-border-subtle: #f0f0f3;
+  --theme-border-strong: #d4d4dc;  /* hover/focus 加深 */
+
+  /* zinc 灰阶文字 */
+  --theme-text-primary: #18181b;
+  --theme-text-secondary: #71717a;
+  --theme-text-tertiary: #a1a1aa;
+
+  /* 强调色即墨黑：克制到极致，不靠彩色 */
+  --theme-accent: #18181b;         /* 墨黑 */
+  --theme-accent-hover: #000000;
+  --theme-accent-pressed: #27272a;
+  --theme-accent-subtle: #f3f3f5;
+  --theme-on-accent: #ffffff;      /* accent 背景上的文字色 */
+
   --theme-success: #16a34a;
   --theme-success-subtle: rgba(22, 163, 74, 0.10);
   --theme-warning: #d97706;
   --theme-warning-subtle: rgba(217, 119, 6, 0.10);
   --theme-danger: #dc2626;
   --theme-danger-subtle: rgba(220, 38, 38, 0.10);
-  --theme-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --theme-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
-  --theme-shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --theme-shadow-lg: 0 8px 24px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
-  --theme-shadow-glow: 0 0 0 1px var(--theme-accent-subtle), 0 4px 16px rgba(99, 102, 241, 0.18);
-}
 
-/* ---- 默认暗色（未设置 data-theme 时兜底为暗色） ---- */
-:root:not([data-theme]),
-:root[data-theme=""] {
-  --theme-bg-base: #0d0f1a;
-  --theme-bg-surface: #161924;
-  --theme-bg-elevated: #1e2233;
-  --theme-bg-hover: #232838;
-  --theme-bg-subtle: #11141f;
-  --theme-border-default: rgba(255, 255, 255, 0.06);
-  --theme-border-subtle: rgba(255, 255, 255, 0.04);
-  --theme-text-primary: #e8eaf0;
-  --theme-text-secondary: #8b90a0;
-  --theme-text-tertiary: #5a5f70;
-  --theme-accent: #6366f1;
-  --theme-accent-hover: #7c7ff5;
-  --theme-accent-pressed: #4f52d4;
-  --theme-accent-subtle: rgba(99, 102, 241, 0.12);
-  --theme-accent-gradient: linear-gradient(135deg, #8b5cf6, #6366f1);
-  --theme-on-accent: #ffffff;
-  --theme-success: #22c55e;
-  --theme-success-subtle: rgba(34, 197, 94, 0.12);
-  --theme-warning: #f59e0b;
-  --theme-warning-subtle: rgba(245, 158, 11, 0.12);
-  --theme-danger: #ef4444;
-  --theme-danger-subtle: rgba(239, 68, 68, 0.12);
-  --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --theme-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --theme-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
-  --theme-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --theme-shadow-glow: 0 0 0 1px var(--theme-accent-subtle), 0 4px 16px rgba(99, 102, 241, 0.25);
+  /* 阴影大幅削弱：B 几乎无阴影，靠发丝线分层 */
+  --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --theme-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --theme-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --theme-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.06);
+  /* glow 改为纯边框换色 + 极轻 ring，无发光 */
+  --theme-shadow-glow: 0 0 0 1px var(--theme-border-strong), 0 0 0 3px rgba(24, 24, 27, 0.08);
 }
 
 /* ---- Tailwind v4 @theme 块：注册 token → 自动生成工具类 ---- */
 @theme {
   /* 色彩（语义层） */
-  --color-bg-base: var(--theme-bg-base);
-  --color-bg-surface: var(--theme-bg-surface);
-  --color-bg-elevated: var(--theme-bg-elevated);
-  --color-bg-hover: var(--theme-bg-hover);
-  --color-bg-subtle: var(--theme-bg-subtle);
-  --color-border-default: var(--theme-border-default);
-  --color-border-subtle: var(--theme-border-subtle);
-  --color-text-primary: var(--theme-text-primary);
-  --color-text-secondary: var(--theme-text-secondary);
-  --color-text-tertiary: var(--theme-text-tertiary);
+  --color-base: var(--theme-bg-base);
+  --color-surface: var(--theme-bg-surface);
+  --color-hover: var(--theme-bg-hover);
+  --color-subtle: var(--theme-bg-subtle);
+  --color-line: var(--theme-border-default);
+  --color-line-subtle: var(--theme-border-subtle);
+  --color-line-strong: var(--theme-border-strong);
+  --color-primary: var(--theme-text-primary);
+  --color-secondary: var(--theme-text-secondary);
+  --color-tertiary: var(--theme-text-tertiary);
   --color-accent: var(--theme-accent);
   --color-accent-hover: var(--theme-accent-hover);
   --color-accent-pressed: var(--theme-accent-pressed);
   --color-accent-subtle: var(--theme-accent-subtle);
-  --color-accent-gradient: var(--theme-accent-gradient);
   --color-on-accent: var(--theme-on-accent);
   --color-success: var(--theme-success);
   --color-success-subtle: var(--theme-success-subtle);
@@ -131,7 +78,7 @@
   --color-danger: var(--theme-danger);
   --color-danger-subtle: var(--theme-danger-subtle);
 
-  /* 阴影（分层强化） */
+  /* 阴影（极弱） */
   --shadow-sm: var(--theme-shadow-sm);
   --shadow-md: var(--theme-shadow-md);
   --shadow-card: var(--theme-shadow-card);
@@ -172,6 +119,7 @@
 
   /* 标准动画（keyframes 定义在底部） */
   --animate-slide-up: slide-up var(--animate-duration-slide) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade: fade var(--animate-duration-slide) ease-out forwards;
   --animate-progress: progress var(--animate-duration-progress) ease-out forwards;
 }
 
@@ -201,30 +149,29 @@ html {
 
 /* ---- 组件层：卡片与交互工具类 ---- */
 @layer components {
-  /* 基础卡片：圆角 lg + 双层细阴影 + 极轻边框 */
+  /* 基础卡片：白底 + 实色发丝边框 + 极轻阴影 */
   .card {
-    background-color: var(--color-bg-surface);
+    background-color: var(--color-surface);
     border-radius: var(--radius-lg);
     border: 1px solid var(--theme-border-default);
     box-shadow: var(--shadow-card);
   }
 
-  /* 可交互卡片：hover 时阴影加深 + 微上浮（解决"无投影、不高级"） */
+  /* 可交互卡片：hover 边框加深 + 底色变 hover（B 不浮起，去 translateY） */
   .card-hover {
-    transition: transform var(--animate-duration-hover) cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow var(--animate-duration-hover) ease;
+    transition: border-color var(--animate-duration-hover) ease,
+                background-color var(--animate-duration-hover) ease;
   }
   .card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--theme-border-default);
+    background-color: var(--color-hover);
+    border-color: var(--theme-border-strong);
   }
 
-  /* 最高层卡片：dock / modal / 浮层用 */
+  /* 最高层卡片：dock / modal / 浮层用（靠深边框分层，不靠阴影） */
   .card-elevated {
-    background-color: var(--color-bg-elevated);
+    background-color: var(--color-surface);
     border-radius: var(--radius-lg);
-    border: 1px solid var(--theme-border-default);
+    border: 1px solid var(--theme-border-strong);
     box-shadow: var(--shadow-lg);
   }
 }
@@ -242,7 +189,7 @@ html {
     letter-spacing: -0.01em;
   }
 
-  /* 输入框 focus ring：glow 阴影替代单纯 border 换色 */
+  /* 输入框 focus：边框换墨黑 + 极轻 ring（去 glow 发光） */
   .input-ring {
     transition: box-shadow var(--animate-duration-hover) ease,
                 border-color var(--animate-duration-hover) ease;
@@ -251,12 +198,12 @@ html {
   .input-ring:focus-visible {
     outline: none;
     border-color: var(--theme-accent);
-    box-shadow: var(--theme-shadow-glow);
+    box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
   }
 
-  /* accent 渐变背景（primary 按钮用） */
+  /* accent 背景工具类（B 禁渐变，指向纯墨色） */
   .bg-accent-gradient {
-    background-image: var(--theme-accent-gradient);
+    background-color: var(--theme-accent);
   }
 }
 
@@ -283,6 +230,16 @@ html {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* B 入场用淡入 */
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

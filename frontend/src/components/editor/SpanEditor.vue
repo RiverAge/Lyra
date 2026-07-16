@@ -31,7 +31,7 @@
         <input
           v-model.number="beginInput"
           type="number"
-          class="input-ring w-32 rounded-sm border border-subtle bg-surface px-2 py-1 font-mono text-sm text-primary"
+          class="input-ring w-32 rounded-sm border border-line-subtle bg-surface px-2 py-1 font-mono text-sm text-primary"
         />
         <span class="font-mono text-xs text-tertiary">
           {{ formatTime(beginInput ?? 0) }}
@@ -44,7 +44,7 @@
         <input
           v-model.number="endInput"
           type="number"
-          class="input-ring w-32 rounded-sm border border-subtle bg-surface px-2 py-1 font-mono text-sm text-primary"
+          class="input-ring w-32 rounded-sm border border-line-subtle bg-surface px-2 py-1 font-mono text-sm text-primary"
         />
         <span class="font-mono text-xs text-tertiary">
           {{ formatTime(endInput ?? 0) }}

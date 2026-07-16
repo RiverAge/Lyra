@@ -25,6 +25,7 @@ from backend.log_setup import AccessLogMiddleware, configure_logging
 from backend.play.stream import play_router
 from backend.server.apple_routes import apple_router
 from backend.server.credits_routes import credits_router
+from backend.server.config_routes import config_router
 from backend.server.editor_routes import editor_router
 from backend.server.library_routes import library_router
 from backend.server.lyrics_match_routes import lyrics_router as lyrics_match_router
@@ -251,6 +252,7 @@ app.include_router(lyrics_match_router, prefix="/api")
 app.include_router(lyrics_sidecar_router, prefix="/api")
 app.include_router(editor_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(config_router, prefix="/api")
 
 # ---------------------------------------------------------------------------
 # 静态产物 + SPA fallback（生产态）

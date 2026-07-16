@@ -52,7 +52,7 @@ import Icon from "@/components/ui/icons/Icon.vue"
  *
  * 设计：
  * - ws 用 shallowRef 持有（wavesurfer 实例非响应式代理友好）
- * - 颜色从 tokens.css 取（--color-border-default / --color-accent），
+ * - 颜色从 tokens.css 取（--color-border-line / --color-accent），
  *   取不到则回退硬编码（仅作为最终兜底，不破坏主题）
  * - ready 不触发即视为解码失败 → decodeFailed=true，UI 降级提示
  * - onUnmounted 必须 destroy + 置空，避免重复挂载与内存泄漏
@@ -70,6 +70,7 @@ const emit = defineEmits<{
   (e: "ready", ok: boolean): void
   (e: "timeupdate", currentTimeMs: number): void
   (e: "seek", timeMs: number): void
+  (e: "playing", isPlaying: boolean): void
 }>()
 
 const ws = shallowRef<WaveSurfer | null>(null)
@@ -88,7 +89,7 @@ onMounted(() => {
   const style = getComputedStyle(document.documentElement)
   ws.value = WaveSurfer.create({
     container: waveformRef.value,
-    waveColor: style.getPropertyValue("--color-border-default").trim() || "#5a5f70",
+    waveColor: style.getPropertyValue("--color-border-line").trim() || "#5a5f70",
     progressColor: style.getPropertyValue("--color-accent").trim() || "#6366f1",
     url: `/api/play/${props.trackId}`,
     height: 80,
@@ -100,9 +101,11 @@ onMounted(() => {
   })
   ws.value.on("play", () => {
     playing.value = true
+    emit("playing", true)
   })
   ws.value.on("pause", () => {
     playing.value = false
+    emit("playing", false)
   })
   ws.value.on("audioprocess", (time: number) => {
     currentTimeMs.value = Math.round(time * 1000)

@@ -34,19 +34,24 @@ def _track_row_to_dict(row: dict) -> dict:
 async def list_library(
     limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    artist: str | None = Query(default=None, description="按艺人模糊匹配"),
+    album: str | None = Query(default=None, description="按专辑模糊匹配"),
+    codec: str | None = Query(default=None, description="按编码格式精确匹配（如 ALAC）"),
 ) -> dict:
     """音乐库列表端点。
 
-    从 SQLite 索引读取，支持分页。
+    从 SQLite 索引读取，支持分页与筛选。
 
     Args:
         limit: 每页条数，1-500，默认 20。
         offset: 偏移量，>= 0，默认 0。
+        artist: 艺人模糊匹配（LIKE），None=不过滤。
+        album: 专辑模糊匹配（LIKE），None=不过滤。
+        codec: 编码格式精确匹配，None=不过滤。
 
     Returns:
         {"items": [...], "total": N, "limit": L, "offset": O}
-
-        空库返 200 + items=[], total=0。
+        total 为过滤后的匹配总数（分页页数依据）。空库返 200 + items=[], total=0。
 
     Raises:
         HTTPException 503: 数据库未初始化。
@@ -58,8 +63,17 @@ async def list_library(
             detail="Database not initialized",
         )
 
-    total = await store.count_tracks()
-    rows = await store.list_tracks(limit=limit, offset=offset)
+    has_filter = any((artist, album, codec))
+    if has_filter:
+        total = await store.count_tracks_filtered(
+            artist=artist, album=album, codec=codec
+        )
+        rows = await store.list_tracks_filtered(
+            limit=limit, offset=offset, artist=artist, album=album, codec=codec
+        )
+    else:
+        total = await store.count_tracks()
+        rows = await store.list_tracks(limit=limit, offset=offset)
 
     items = [_track_row_to_dict(dict(r)) for r in rows]
 
@@ -69,6 +83,27 @@ async def list_library(
         "limit": limit,
         "offset": offset,
     }
+
+
+@library_router.get("/library/stats")
+async def library_stats() -> dict:
+    """曲库聚合统计端点（首页统计卡数据源）。
+
+    Returns:
+        {track_count, album_count, total_duration_sec, lossless_ratio}
+        lossless_ratio 为 0.0~1.0。空库返回全 0。
+
+    Raises:
+        HTTPException 503: 数据库未初始化。
+    """
+    store = get_store()
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not initialized",
+        )
+
+    return await store.library_stats()
 
 
 @library_router.get("/library/{track_id}")

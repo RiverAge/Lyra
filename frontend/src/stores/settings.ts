@@ -1,12 +1,14 @@
-import type { AppSettings } from "@/apis/settings"
-import { fetchSettings, saveSettings } from "@/apis/settings"
+import type { AppConfig, AppSettings } from "@/apis/settings"
+import { fetchConfig, fetchSettings, saveSettings } from "@/apis/settings"
 
 /**
  * Settings Store
  *
  * 职责：
- * - 维护应用配置状态（credits_base_url 等）
- * - load：进入配置页时拉取当前值
+ * - 维护应用配置状态（credits_base_url 等，可写）
+ * - 维护环境配置状态（config，只读 LYRA_* 解析值）
+ * - load：进入配置页时拉取当前可写配置
+ * - loadConfig：拉取只读环境配置（独立加载，互不阻塞）
  * - save：用户保存时写入后端
  *
  * 设计：
@@ -21,6 +23,11 @@ export const useSettingsStore = defineStore("settings", () => {
   const settings = ref<AppSettings | null>(null)
   const saved = ref(false)
 
+  // 只读环境配置
+  const config = ref<AppConfig | null>(null)
+  const configLoading = ref(false)
+  const configError = ref<string | null>(null)
+
   async function load(): Promise<void> {
     loading.value = true
     error.value = null
@@ -31,6 +38,19 @@ export const useSettingsStore = defineStore("settings", () => {
       settings.value = null
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadConfig(): Promise<void> {
+    configLoading.value = true
+    configError.value = null
+    try {
+      config.value = await fetchConfig()
+    } catch (e: unknown) {
+      configError.value = normalizeError(e)
+      config.value = null
+    } finally {
+      configLoading.value = false
     }
   }
 
@@ -56,7 +76,10 @@ export const useSettingsStore = defineStore("settings", () => {
     saved.value = false
   }
 
-  return { loading, saving, error, settings, saved, load, save, reset }
+  return {
+    loading, saving, error, settings, saved, load, save, reset,
+    config, configLoading, configError, loadConfig,
+  }
 })
 
 function normalizeError(e: unknown): string {

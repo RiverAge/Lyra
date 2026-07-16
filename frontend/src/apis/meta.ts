@@ -73,15 +73,21 @@ export interface FieldWithStatus {
   status: FieldStatusKind
 }
 
-/** 字段映射清单元素（后端 object，前端宽容读取 name/tag 等键） */
+/** 字段映射清单元素：语义字段名 → 各容器的 mutagen key（后端 /meta/fields 返回）。 */
 export interface FieldInfo {
-  name?: string
-  tag?: string
-  description?: string
-  [key: string]: unknown
+  semantic: string
+  /** MP4/ALAC 容器的 mutagen key（如 "©nam"），可能 null */
+  mp4: string | null
+  /** FLAC 容器的 mutagen key（如 "title"），可能 null */
+  flac: string | null
+  /** MP3(ID3) 容器的 mutagen key（如 "TIT2"），可能 null */
+  mp3: string | null
 }
 
-export type FieldMap = Record<string, FieldInfo>
+/** /meta/fields 返回结构：{fields: FieldInfo[]}。 */
+export interface FieldMapResponse {
+  fields: FieldInfo[]
+}
 
 /**
  * 从 axios 错误对象抽取后端错误信息。
@@ -109,9 +115,9 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
-/** 拉取支持的字段映射清单 */
-export async function fetchFields(): Promise<FieldMap> {
-  return http.get<FieldMap>("/meta/fields").then((res) => res.data)
+/** 拉取支持的字段映射清单（语义字段名 → 各容器 mutagen key）。 */
+export async function fetchFields(): Promise<FieldMapResponse> {
+  return http.get<FieldMapResponse>("/meta/fields").then((res) => res.data)
 }
 
 /** 拉取 Apple WebAPI 权威元数据 */

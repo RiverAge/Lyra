@@ -49,8 +49,13 @@ COPY data/role_map.toml ./data/role_map.toml
 # 拷前端产物（Stage 1 的 /build/dist → /app/static）
 COPY --from=frontend-build /build/dist ./static
 
-# 运行期环境变量（docker-compose / docker run 可覆盖）
-ENV LYRA_DB_PATH=/data/lyra.db \
+# 运行期环境变量（容器内固定路径约定，docker run 只需挂载无需 -e）：
+# - /music   音乐库（host bind mount, :ro 只读）
+# - /data    DB + 日志（host bind mount, 读写持久化）
+# 覆盖优先级：docker run -e > 此处 ENV > .env（.env 不进镜像，仅本机 dev 用）
+ENV LYRA_MUSIC_LIBRARY_ROOT=/music \
+    LYRA_DB_PATH=/data/lyra.db \
+    LYRA_LOG_DIR=/data/logs \
     LYRA_ROLE_MAP_FILE=/app/data/role_map.toml \
     LYRA_STATIC_DIR=/app/static \
     PYTHONUNBUFFERED=1 \

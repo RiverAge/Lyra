@@ -11,6 +11,7 @@ import {
   deleteSidecar,
   listSidecars,
   matchLyrics,
+  previewCandidate,
   writeSidecar,
 } from "@/apis/lyrics"
 
@@ -35,6 +36,14 @@ export const useLyricsStore = defineStore("lyrics", () => {
   const matchResult = ref<MatchResponse | null>(null)
   const matching = ref(false)
   const matchError = ref<string | null>(null)
+
+  // ---- 选中候选 + 预览（两段聚焦流：主结果区绑 selectedCandidate / previewTtml）----
+  const selectedCandidate = ref<Candidate | null>(null)
+  const previewTtml = ref<string | null>(null)
+  const previewing = ref(false)
+  const previewError = ref<string | null>(null)
+  // 预览视图：rendered=逐行纯文本 / raw=TTML 源码
+  const previewMode = ref<"rendered" | "raw">("rendered")
 
   // ---- 已有 sidecar ----
   const sidecars = ref<SidecarItem[]>([])
@@ -61,10 +70,10 @@ export const useLyricsStore = defineStore("lyrics", () => {
     () => matchResult.value?.lyric_source ?? null,
   )
 
-  /** 是否可采纳：有真实 ttml 且来源合法（netease/qq）。 */
+  /** 是否可采纳：当前预览有真实 TTML 且选中候选来源合法（netease/qq）。 */
   const canAdopt = computed<boolean>(() => {
-    if (!bestTtml.value) return false
-    const src = lyricSource.value
+    if (!previewTtml.value) return false
+    const src = selectedCandidate.value?.source
     return src === "netease" || src === "qq"
   })
 
@@ -73,13 +82,50 @@ export const useLyricsStore = defineStore("lyrics", () => {
     matching.value = true
     matchError.value = null
     lastMessage.value = null
+    // 清空上一轮选中/预览
+    selectedCandidate.value = null
+    previewTtml.value = null
+    previewError.value = null
     try {
       const result = await matchLyrics(trackId, providers)
       matchResult.value = result
+      // 默认选中 best，预览挂载 best_ttml（match 已返回，零额外请求）
+      selectedCandidate.value = result.best
+      previewTtml.value = result.best_ttml
     } catch (e: unknown) {
       matchError.value = normalizeMatchError(e)
     } finally {
       matching.value = false
+    }
+  }
+
+  /**
+   * 切换选中候选 → 按需拉取该候选 TTML 挂载到预览。
+   * best 候选短路：若选中的就是 best 且 bestTtml 已有，直接复用（省一次请求）。
+   */
+  async function selectCandidate(trackId: string, candidate: Candidate): Promise<void> {
+    selectedCandidate.value = candidate
+    previewError.value = null
+    // best 短路
+    const b = best.value
+    if (
+      b &&
+      b.id === candidate.id &&
+      b.source === candidate.source &&
+      bestTtml.value
+    ) {
+      previewTtml.value = bestTtml.value
+      return
+    }
+    previewing.value = true
+    try {
+      const res = await previewCandidate(trackId, candidate.id, candidate.source)
+      previewTtml.value = res.ttml
+    } catch (e: unknown) {
+      previewTtml.value = null
+      previewError.value = normalizeMatchError(e)
+    } finally {
+      previewing.value = false
     }
   }
 
@@ -97,11 +143,15 @@ export const useLyricsStore = defineStore("lyrics", () => {
     }
   }
 
-  /** 采纳最佳匹配 → 写 sidecar。source 用 lyric_source（netease/qq），不是 apple。 */
-  async function adoptBest(trackId: string): Promise<boolean> {
-    if (!bestTtml.value || !canAdopt.value) return false
-    const source = lyricSource.value
-    if (!source) return false
+  /**
+   * 采纳当前选中候选的歌词 → 写 sidecar。
+   * source 用选中候选规整后的 slug（netease/qq），写入的是 previewTtml（当前预览内容）。
+   */
+  async function adoptSelected(trackId: string): Promise<boolean> {
+    if (!canAdopt.value) return false
+    const source = selectedCandidate.value?.source
+    const ttml = previewTtml.value
+    if (!source || !ttml) return false
     writing.value = true
     writeError.value = null
     lastMessage.value = null
@@ -109,7 +159,7 @@ export const useLyricsStore = defineStore("lyrics", () => {
       const res: WriteSidecarResponse = await writeSidecar(
         trackId,
         source,
-        bestTtml.value as string,
+        ttml as string,
       )
       if (res.written) {
         lastMessage.value = `已写入 ${source} sidecar：${res.path}`
@@ -152,11 +202,21 @@ export const useLyricsStore = defineStore("lyrics", () => {
   function resetMatch(): void {
     matchResult.value = null
     matchError.value = null
+    selectedCandidate.value = null
+    previewTtml.value = null
+    previewing.value = false
+    previewError.value = null
+    previewMode.value = "rendered"
   }
 
   function resetAll(): void {
     matchResult.value = null
     matchError.value = null
+    selectedCandidate.value = null
+    previewTtml.value = null
+    previewing.value = false
+    previewError.value = null
+    previewMode.value = "rendered"
     sidecars.value = []
     loadingSidecars.value = false
     sidecarsError.value = null
@@ -178,6 +238,12 @@ export const useLyricsStore = defineStore("lyrics", () => {
     bestTtml,
     lyricSource,
     canAdopt,
+    // 选中候选 + 预览
+    selectedCandidate,
+    previewTtml,
+    previewing,
+    previewError,
+    previewMode,
     // sidecar
     sidecars,
     loadingSidecars,
@@ -189,8 +255,9 @@ export const useLyricsStore = defineStore("lyrics", () => {
     lastMessage,
     // actions
     runMatch,
+    selectCandidate,
     loadSidecars,
-    adoptBest,
+    adoptSelected,
     removeSidecar,
     resetMatch,
     resetAll,

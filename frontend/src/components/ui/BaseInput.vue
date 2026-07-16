@@ -64,7 +64,7 @@ const iconName = computed(() => props.icon ?? null)
 const wrapperClass = "relative inline-flex"
 
 const inputClass = computed(() => [
-  "input-ring w-full rounded-sm border border-subtle bg-surface px-2.5 py-1.5 text-sm text-primary placeholder:text-tertiary disabled:opacity-50",
+  "input-ring w-full rounded-sm border border-line-subtle bg-surface px-2.5 py-1.5 text-sm text-primary placeholder:text-tertiary disabled:opacity-50",
   iconName.value ? "pl-8" : "",
   "disabled:cursor-not-allowed",
 ])

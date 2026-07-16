@@ -73,7 +73,7 @@ def candidate_to_dict(c: Candidate) -> dict[str, Any]:
         "artists": c.artists,
         "album": c.album,
         "duration": c.duration_s,
-        "source": c.source,
+        "source": _normalize_source(c.source),
         "playable": c.playable,
         "copyright": c.copyright,
         "status": c.status,
@@ -83,6 +83,20 @@ def candidate_to_dict(c: Candidate) -> dict[str, Any]:
         "reasons": c.reasons,
         "penalties": c.penalties,
     }
+
+
+def _normalize_source(raw: str) -> str:
+    """序列化边界规整：把 Candidate.source 转成干净 provider slug。
+
+    内存中的 Candidate.source 保留 NetEase 搜索接口 tag（search/match /
+    cloudsearch:kw / song/detail）不动——runner._provider_for_candidate 按
+    == "qq" 路由，脏值不影响。只在输出 dict 时规整成 slug 供前端展示，
+    避免 "search/match人生" 这类接口路径泄漏到 UI。
+    白名单：已知 slug 原样；未知值一律归 "netease"（非 qq 即 NetEase 路由）。
+    """
+    if raw in ("netease", "qq"):
+        return raw
+    return "netease"
 
 
 def query_to_dict(q: TrackQuery) -> dict[str, Any]:

@@ -1,0 +1,121 @@
+<template>
+  <div class="rounded-lg border border-line bg-surface p-3">
+    <div class="mb-2 flex items-baseline justify-between gap-3">
+      <span class="text-sm font-semibold text-primary">歌词同步预览</span>
+      <span class="text-xs text-tertiary">边播边校对，编辑后实时反映新时间</span>
+    </div>
+    <!-- 播放控件（audioManager 单例） -->
+    <SyncControls />
+    <!-- 同步歌词：当前行高亮 + 自动滚动 -->
+    <div ref="bodyEl" class="mt-2.5 max-h-80 overflow-auto">
+      <p
+        v-for="(line, idx) in lines"
+        :key="idx"
+        :ref="(el) => setLineRef(el, idx)"
+        class="sp-line"
+        :class="{ 'sp-line-active': idx === currentIndex }"
+      >
+        {{ line.text }}
+      </p>
+      <p v-if="lines.length === 0" class="p-4 text-sm text-tertiary">
+        无歌词行
+      </p>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+/* global Element, HTMLElement */
+import { useAudioManager } from "@/lib/audioManager"
+import { useEditorStore } from "@/stores/editor"
+import SyncControls from "@/components/lyrics/SyncControls.vue"
+import type { LyricLine } from "@/composables/useLyricSync"
+
+/**
+ * SyncPreview — 编辑器整行歌词同步预览
+ *
+ * 订阅 editorStore.lines（LineModel[]，已有 begin_ms/end_ms）构造 LyricLine[]，
+ * 驱动源是 audioManager.currentTime×1000（听音校对，非 wavesurfer）。
+ * 编辑 span 时间写回 → doc 更新 → lines 自动刷新 → 播放按新时间走。
+ *
+ * 不复用 useLyricSync（它接 ttml 字符串走 parseTtml），这里直接用 editorStore.lines
+ * 构造 LyricLine[]，内联当前行二分查找逻辑。
+ */
+const editor = useEditorStore()
+const audio = useAudioManager()
+
+/** editorStore.lines → LyricLine[]（直接映射，无需序列化 TTML）。 */
+const lines = computed<LyricLine[]>(() =>
+  editor.lines.map((l) => ({
+    text: l.text,
+    beginMs: l.begin_ms,
+    endMs: l.end_ms,
+  })),
+)
+
+const currentIndex = ref(-1)
+const currentTimeMs = computed(() => Math.round(audio.currentTime.value * 1000))
+
+watch(lines, () => { currentIndex.value = -1 })
+
+watch(currentTimeMs, (t) => {
+  const arr = lines.value
+  if (arr.length === 0) return
+  if (t < 0) {
+    currentIndex.value = -1
+    return
+  }
+  // 二分：最后一个 beginMs <= t
+  let lo = 0
+  let hi = arr.length - 1
+  let ans = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (arr[mid].beginMs <= t) {
+      ans = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  if (ans !== currentIndex.value) currentIndex.value = ans
+})
+
+const bodyEl = ref<HTMLElement | null>(null)
+const lineRefs = ref<(Element | null)[]>([])
+
+function setLineRef(el: unknown, idx: number): void {
+  lineRefs.value[idx] = (el as Element | null)
+}
+
+// 当前行变化 → 滚到视口中央
+watch(currentIndex, async (idx) => {
+  if (idx < 0) return
+  await nextTick()
+  const el = lineRefs.value[idx]
+  if (el instanceof HTMLElement) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+})
+</script>
+
+<style scoped>
+/* 同步歌词行基础 + 当前行高亮（inset box-shadow 色条，tw 无法表达） */
+.sp-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 2px 8px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--theme-text-secondary);
+  line-height: 1.5;
+  transition: background-color var(--animate-duration-hover) ease, color var(--animate-duration-hover) ease;
+}
+.sp-line-active {
+  background-color: var(--theme-accent-subtle);
+  color: var(--theme-accent);
+  font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--theme-accent);
+}
+</style>

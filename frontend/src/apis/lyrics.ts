@@ -26,9 +26,12 @@ export type MatchDecision = "accept" | "review" | "reject" | "not_found"
 
 /** 单个候选：来源/标题/艺人/专辑/评分，预留扩展字段。 */
 export interface Candidate {
-  source: string
+  /** 来源 slug：后端 candidate_to_dict 已规整为 "netease" | "qq" */
+  source: LyricSource
+  id: number
   title: string
-  artist: string
+  /** 艺人数组（后端 candidate_to_dict 输出 artists: list[str]） */
+  artists: string[]
   album: string
   score: number
   [key: string]: unknown
@@ -44,6 +47,14 @@ export interface MatchResponse {
   lyrics: unknown
   lyric_source: LyricSource | null
   best_ttml: string | null
+}
+
+/** 按候选拉取的 TTML 预览响应。 */
+export interface PreviewResponse {
+  track_id: string
+  candidate_id: number
+  source: LyricSource
+  ttml: string | null
 }
 
 /** sidecar 条目：来源/格式/物理路径/内容。 */
@@ -109,6 +120,22 @@ export async function matchLyrics(
   }
   return http
     .get<MatchResponse>(`/lyrics/${trackId}/match`, { params })
+    .then((res) => res.data)
+}
+
+/**
+ * 按候选拉取 TTML 预览（不重跑匹配，只按 candidate.id 取词）。
+ * 用于前端在候选列表里点选任意候选时，按需挂载到预览区。
+ * 错误（400 未知 source / 404 track 不存在 / 422 非数字 id）由 http.ts 抛出。
+ */
+export async function previewCandidate(
+  trackId: string,
+  candidateId: number,
+  source: LyricSource,
+): Promise<PreviewResponse> {
+  const params = { source, candidate_id: candidateId }
+  return http
+    .get<PreviewResponse>(`/lyrics/${trackId}/preview`, { params })
     .then((res) => res.data)
 }
 

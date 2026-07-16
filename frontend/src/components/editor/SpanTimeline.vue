@@ -19,7 +19,7 @@
       <li
         v-for="(line, li) in lines"
         :key="line.key || li"
-        :class="isLineCurrent(li) ? 'border-accent bg-accent-subtle' : 'border-subtle bg-subtle'"
+        :class="isLineCurrent(li) ? 'border-accent bg-accent-subtle' : 'border-line-subtle bg-subtle'"
         class="rounded-md border p-2"
       >
         <!-- 行头：行号 + key + begin/end -->

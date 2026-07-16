@@ -208,12 +208,19 @@ async def stream_track(request: Request, track_id: str) -> Response:
                 },
             )
 
+        # 转码流实时生成，无真实 Content-Length。
+        # 不设 Content-Length（走 chunked）——若设估算值，流式输出无法保证
+        # 发够声明字节数（Opus VBR 实际比估算略小），浏览器判定媒体不完整 → not suitable。
+        # chunked + Accept-Ranges: none 是实时转码流的正确 HTTP 形态，浏览器 <audio> 支持。
         return StreamingResponse(
             transcode_stream(track_path),
             status_code=200,
             media_type=TRANSCODE_CONTENT_TYPE,
             headers={
                 "Cache-Control": "no-cache",
+                # 转码流实时生成，不可 seek/不支持 Range。
+                # 明确声明 none，避免浏览器 <audio> 尝试 Range 探测导致加载失败。
+                "Accept-Ranges": "none",
                 "X-Lyra-Codec": codec,
                 "X-Lyra-Transcoded": "true",
             },
@@ -276,11 +283,14 @@ async def stream_track_head(request: Request, track_id: str) -> Response:
                     "X-Lyra-Codec": codec,
                 },
             )
+        # HEAD 不设 Content-Length（转码流无真实长度，设估算会与 GET 实际不符）。
+        # 走 chunked 语义：返回 Content-Type + Accept-Ranges: none 即可。
         return Response(
             status_code=200,
             media_type=TRANSCODE_CONTENT_TYPE,
             headers={
                 "Cache-Control": "no-cache",
+                "Accept-Ranges": "none",
                 "X-Lyra-Codec": codec,
                 "X-Lyra-Transcoded": "true",
             },

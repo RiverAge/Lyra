@@ -67,12 +67,12 @@ const iconRightName = computed(() => props.iconRight ?? null)
 const iconSize = computed(() => (props.size === "sm" ? 14 : 16))
 
 const baseClass =
-  "inline-flex items-center justify-center gap-1.5 rounded-sm transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+  "inline-flex items-center justify-center gap-1.5 rounded-sm cursor-pointer transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
 
 const sizeClass = computed(() => {
   if (props.iconOnly) {
-    // 纯图标按钮：方形 padding
-    return props.size === "sm" ? "p-1.5" : "p-2"
+    // 纯图标按钮：方形 padding，加 border 让 hover 有可识别容器
+    return props.size === "sm" ? "p-1.5 border border-transparent" : "p-2 border border-transparent"
   }
   return props.size === "sm"
     ? "px-2.5 py-1 text-xs"
@@ -86,16 +86,20 @@ const variantClass = computed(() => {
       return "bg-danger text-on-accent hover:opacity-90 hover:shadow-md active:translate-y-0"
     }
     // secondary + danger
-    return "bg-surface border border-danger/40 text-danger hover:bg-danger-subtle hover:border-danger/60"
+    return "bg-danger-subtle text-danger hover:bg-danger/20"
   }
   switch (props.variant) {
     case "primary":
-      return "bg-accent-gradient text-on-accent hover:shadow-lg hover:-translate-y-px active:translate-y-0 active:shadow-md"
+      return "bg-accent-gradient text-on-accent hover:shadow-lg hover:brightness-105 active:shadow-md"
     case "ghost":
+      // icon-only ghost：hover 加边框+底色，形成可识别按钮容器（浅底上原 bg-hover 太微弱）
+      if (props.iconOnly) {
+        return "bg-transparent text-secondary hover:bg-hover hover:border-line hover:text-primary"
+      }
       return "bg-transparent text-secondary hover:bg-hover hover:text-primary"
     case "secondary":
     default:
-      return "bg-surface border border-subtle text-primary hover:bg-elevated hover:border-default hover:shadow-sm"
+      return "bg-surface text-secondary hover:bg-hover hover:text-primary hover:shadow-sm"
   }
 })
 

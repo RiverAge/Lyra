@@ -1,220 +1,200 @@
 <template>
-  <div class="flex flex-col gap-4">
-    <header class="card p-4">
-      <h2 class="text-lg font-semibold text-primary">
-        元数据
-      </h2>
-      <p class="mt-1 text-sm text-secondary">
-        拉取权威元数据，对比后确认写入音频标签。
-      </p>
-      <p class="mt-1 text-xs text-tertiary">
-        track_id:
-        <span class="font-mono text-secondary">{{ trackId }}</span>
-        · 已选字段：
-        <span class="font-mono text-secondary">{{ selectedFieldCount }}</span>
-      </p>
-    </header>
-
-    <!-- 统一拉取区 -->
-    <section class="card p-4">
-      <header class="mb-3 flex items-center justify-between">
-        <h3 class="text-base font-semibold text-primary">
-          拉取元数据
-        </h3>
-        <span
-          v-if="fetchAllPhase === 'done'"
-          class="rounded-sm bg-accent-subtle px-2 py-1 text-xs font-medium text-success"
-        >
-          拉取完成
-        </span>
-      </header>
-
-      <!-- 输入参数 + 拉取按钮 -->
-      <div class="mb-3 flex flex-wrap items-end gap-3">
-        <label class="flex flex-col gap-1 text-sm text-secondary">
-          <span>storefront</span>
-          <BaseInput
-            v-model="storefront"
-            placeholder="us"
-            :disabled="fetchAllLoading"
-            class="w-24"
-          />
-        </label>
-        <label class="flex flex-col gap-1 text-sm text-secondary">
-          <span>lang</span>
-          <BaseInput
-            v-model="lang"
-            placeholder="zh-Hans"
-            :disabled="fetchAllLoading"
-            class="w-32"
-          />
-        </label>
-        <BaseButton
-          variant="primary"
-          icon="Search"
-          :disabled="fetchAllLoading || !trackId"
-          @click="onFetchAll"
-        >
-          {{ fetchAllLoading ? fetchPhaseLabel : "拉取元数据" }}
-        </BaseButton>
+  <div class="flex flex-col gap-6">
+    <!-- section head -->
+    <div class="flex items-baseline justify-between gap-4">
+      <div>
+        <h3 class="text-xl font-semibold tracking-tight text-primary">元数据</h3>
+        <p class="mt-0.5 text-sm text-secondary">对照当前标签与权威值，勾选差异写入音频标签</p>
       </div>
+      <span class="text-xs tracking-wide text-tertiary">已选 {{ selectedFieldCount }} 字段</span>
+    </div>
 
-      <!-- 来源级状态提示 -->
-      <div class="flex flex-col gap-2">
-        <!-- Apple 失败 -->
-        <div
-          v-if="appleSourceStatus === 'failed_retryable'"
-          class="flex items-center gap-2 rounded-md border border-subtle bg-danger-subtle px-3 py-2"
-        >
-          <p class="text-sm text-danger">
-            结构化信息拉取失败，可重试
-          </p>
+    <!-- 统一卡片：工具栏 + 字段表 + 其他本地标签 -->
+    <section class="card overflow-hidden">
+      <!-- 表头工具栏：storefront/lang + 拉取 + 对比 + 写入 -->
+      <div class="flex flex-wrap items-end justify-between gap-3 border-b border-line-subtle p-4">
+        <div class="flex flex-wrap items-end gap-2.5">
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-secondary">storefront</span>
+            <BaseInput v-model="storefront" placeholder="us" :disabled="fetchAllLoading" class="w-20" />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-xs text-secondary">lang</span>
+            <BaseInput v-model="lang" placeholder="zh-Hans" :disabled="fetchAllLoading" class="w-28" />
+          </label>
           <BaseButton
-            variant="ghost"
-            size="sm"
-            icon="RefreshCw"
-            :disabled="fetchAllLoading"
-            @click="onRetrySource('apple')"
+            variant="primary"
+            icon="Search"
+            :disabled="fetchAllLoading || !trackId"
+            @click="onFetchAll"
           >
-            重试
+            {{ fetchAllLoading ? fetchPhaseLabel : "拉取" }}
           </BaseButton>
         </div>
-        <!-- Credits 永久无 -->
-        <div
-          v-if="creditsSourceStatus === 'missing_permanent'"
-          class="rounded-md border border-subtle bg-surface px-3 py-2"
-        >
-          <p class="text-sm text-tertiary">
-            该曲目暂无制作人员信息
-          </p>
-        </div>
-        <!-- Credits 失败 -->
-        <div
-          v-if="creditsSourceStatus === 'failed_retryable'"
-          class="flex items-center gap-2 rounded-md border border-subtle bg-danger-subtle px-3 py-2"
-        >
-          <p class="text-sm text-danger">
-            制作人员信息拉取失败，可重试
-          </p>
+        <div class="flex flex-wrap items-end gap-2.5">
           <BaseButton
-            variant="ghost"
-            size="sm"
-            icon="RefreshCw"
-            :disabled="fetchAllLoading"
-            @click="onRetrySource('credits')"
+            variant="secondary"
+            icon="Check"
+            :disabled="diffLoading || !hasSelection"
+            @click="onCompute"
           >
-            重试
+            {{ diffLoading ? "对比中…" : "对比" }}
+          </BaseButton>
+          <BaseButton
+            variant="primary"
+            danger
+            icon="Edit3"
+            :disabled="!canWrite"
+            :title="!canWrite ? '请先对比 before/after' : ''"
+            @click="showConfirm = true"
+          >
+            写入标签
           </BaseButton>
         </div>
       </div>
-    </section>
 
-    <!-- 合并字段表 -->
-    <section v-if="fieldRows.length > 0" class="card p-4">
-      <header class="mb-3">
-        <h3 class="text-base font-semibold text-primary">
-          字段选择
-        </h3>
-        <p class="mt-1 text-xs text-tertiary">
-          勾选要写入的权威字段，变更选择后需重新对比。
-        </p>
-      </header>
-      <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-sm">
-          <thead>
-            <tr class="border-b border-subtle text-left text-secondary">
-              <th class="py-2 pr-4 font-medium">
-                字段
-              </th>
-              <th class="py-2 pr-4 font-medium">
-                值
-              </th>
-              <th class="py-2 pr-4 font-medium w-16 text-center">
-                来源
-              </th>
-              <th class="py-2 pr-4 font-medium w-16 text-center">
-                状态
-              </th>
-              <th class="py-2 font-medium w-10 text-center">
-                选择
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="row in fieldRows"
-              :key="row.field"
-              class="border-b border-subtle align-top"
-              :class="row.status !== 'ok' ? 'opacity-50' : ''"
+      <!-- 来源级状态 -->
+      <div v-if="appleSourceStatus === 'failed_retryable' || creditsSourceStatus !== 'ok'" class="flex flex-col gap-2 px-4 pt-3">
+        <div v-if="appleSourceStatus === 'failed_retryable'" class="status-row status-fail">
+          <span class="text-sm text-danger">结构化信息拉取失败，可重试</span>
+          <BaseButton variant="ghost" size="sm" icon="RefreshCw" :disabled="fetchAllLoading" @click="onRetrySource('apple')">重试</BaseButton>
+        </div>
+        <div v-if="creditsSourceStatus === 'missing_permanent'" class="status-row">
+          <span class="text-sm text-secondary">该曲目暂无制作人员信息</span>
+        </div>
+        <div v-if="creditsSourceStatus === 'failed_retryable'" class="status-row status-fail">
+          <span class="text-sm text-danger">制作人员信息拉取失败，可重试</span>
+          <BaseButton variant="ghost" size="sm" icon="RefreshCw" :disabled="fetchAllLoading" @click="onRetrySource('credits')">重试</BaseButton>
+        </div>
+      </div>
+
+      <!-- diff/写入 错误与成功提示 -->
+      <div v-if="diffError" class="mx-4 mt-3 rounded-sm bg-danger-subtle px-3 py-2 text-sm text-danger">{{ diffError }}</div>
+      <div v-if="writeError" class="mx-4 mt-3 rounded-sm bg-danger-subtle px-3 py-2 text-sm text-danger">{{ writeError }}</div>
+      <div v-if="writeResult" class="mx-4 mt-3 rounded-sm bg-success-subtle px-3 py-2 text-sm text-success">
+        写入成功：{{ writeResult.fields_written }} 个字段（{{ writeResult.format }}）
+      </div>
+
+      <!-- 统一字段表 -->
+      <div v-if="unifiedRows.length > 0">
+        <div class="table-head">
+          <div class="truncate text-sm font-medium text-primary">字段</div>
+          <div class="min-w-0 break-words text-sm text-secondary">当前值</div>
+          <div class="col-auth">权威值</div>
+          <div class="text-center">状态</div>
+          <div class="text-center">选</div>
+        </div>
+        <label
+          v-for="row in unifiedRows"
+          :key="row.field"
+          class="table-row"
+          :class="{ 'row-diff': row.hasDiff, 'row-disabled': row.hasAuth && row.status !== 'ok' }"
+        >
+          <div class="truncate text-sm font-medium text-primary">{{ row.label }}</div>
+          <div class="min-w-0 break-words text-sm text-secondary">
+            <span v-if="row.currentValues.length > 0">{{ row.currentValues.join("; ") }}</span>
+            <span v-else class="text-tertiary">—</span>
+          </div>
+          <div class="col-auth">
+            <template v-if="row.hasAuth">
+              <span class="break-words">{{ row.authValues.join("; ") }}</span>
+              <!-- diff 内联：before 小字（仅 hasDiff 且已对比） -->
+              <span v-if="row.diffBefore" class="break-words text-xs text-tertiary">原: {{ row.diffBefore }}</span>
+            </template>
+            <span v-else-if="hasFetched" class="text-tertiary">—</span>
+            <span v-else class="text-xs text-tertiary">未拉取</span>
+          </div>
+          <div class="text-center">
+            <span v-if="!row.hasAuth" class="tag tag-dim">本地</span>
+            <span v-else-if="row.status === 'missing_permanent'" class="tag tag-dim">暂无</span>
+            <span v-else-if="row.status === 'failed_retryable'" class="tag tag-fail">失败</span>
+            <span v-else class="tag tag-ok">就绪</span>
+          </div>
+          <div class="text-center">
+            <input
+              v-model="selected"
+              type="checkbox"
+              :value="row.field"
+              :disabled="!row.hasAuth || row.status !== 'ok'"
+              class="cb"
             >
-              <td class="py-2 pr-4 font-mono text-xs text-primary">
-                {{ row.field }}
-              </td>
-              <td class="py-2 pr-4 text-primary">
-                <ul class="flex flex-col gap-0.5">
-                  <li
-                    v-for="(v, i) in row.values"
-                    :key="`${row.field}-${i}`"
-                    class="break-all"
-                  >
-                    {{ v }}
-                  </li>
-                </ul>
-              </td>
-              <td class="py-2 text-center">
-                <span
-                  class="rounded-sm px-1.5 py-0.5 text-xs font-medium"
-                  :class="row.source === 'apple' ? 'bg-accent-subtle text-accent' : 'bg-surface text-secondary'"
-                >
-                  {{ row.source === "apple" ? "官方信息" : "制作人员" }}
-                </span>
-              </td>
-              <td class="py-2 text-center">
-                <span
-                  v-if="row.status === 'missing_permanent'"
-                  class="rounded-sm bg-surface px-1.5 py-0.5 text-xs font-medium text-tertiary"
-                >
-                  暂无
-                </span>
-                <span
-                  v-else-if="row.status === 'failed_retryable'"
-                  class="rounded-sm bg-surface px-1.5 py-0.5 text-xs font-medium text-danger"
-                >
-                  失败
-                </span>
-              </td>
-              <td class="py-2 text-center">
-                <input
-                  v-model="selected"
-                  type="checkbox"
-                  :value="row.field"
-                  :disabled="row.status !== 'ok'"
-                  class="accent-accent"
-                >
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          </div>
+        </label>
       </div>
+      <div v-else class="p-5 text-sm text-tertiary">
+        该曲目无可读标签字段。
+      </div>
+
+      <!-- 其他本地标签（未映射到语义字段） -->
+      <details v-if="otherLocalRows.length > 0" class="other-local">
+        <summary class="other-summary">
+          其他本地标签（{{ otherLocalRows.length }}）
+        </summary>
+        <div class="other-grid">
+          <div v-for="row in otherLocalRows" :key="row.key" class="other-row">
+            <div class="other-key font-mono" :title="row.key">{{ row.label }}</div>
+            <div class="break-words text-xs text-secondary">{{ row.values.join("; ") }}</div>
+          </div>
+        </div>
+      </details>
     </section>
 
-    <DiffView
-      :track-id="trackId"
-      :fields="mergedFields"
-      @written="onWritten"
-    />
+    <!-- 写入二次确认弹窗（迁自 DiffView） -->
+    <Teleport to="body">
+      <div
+        v-if="showConfirm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+        role="dialog"
+        aria-modal="true"
+        @click.self="showConfirm = false"
+      >
+        <div class="card-elevated max-w-md w-full p-5">
+          <h4 class="mb-2 text-base font-semibold text-primary">确认写入标签？</h4>
+          <p class="mb-4 text-sm text-secondary">
+            写操作不可逆（无 Ctrl+Z，无自动备份）。将写入
+            <span class="text-primary">{{ diffSummaryText }}</span>。请确认上方对比无误后再继续。
+          </p>
+          <div v-if="writeError" class="mb-3 rounded-md border border-line-subtle bg-danger-subtle px-3 py-2 text-sm text-danger">
+            {{ writeError }}
+          </div>
+          <div class="flex justify-end gap-2">
+            <BaseButton variant="secondary" :disabled="writeLoading" @click="showConfirm = false">取消</BaseButton>
+            <BaseButton variant="primary" danger :disabled="writeLoading" @click="onWrite">
+              {{ writeLoading ? "写入中…" : "确认写入" }}
+            </BaseButton>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import DiffView from "@/components/meta/DiffView.vue"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import BaseInput from "@/components/ui/BaseInput.vue"
 import { useMetaStore } from "@/stores/meta"
-import type { AuthoritativeFields, FieldWithStatus } from "@/apis/meta"
+import type { AuthoritativeFields } from "@/apis/meta"
+import type { TrackItem } from "@/apis/library"
 
+/**
+ * 元数据 tab（单一字段表重构）
+ *
+ * 范式：从"当前标签/拉取/对比/写入"四卡纵向罗列，改为一张统一字段表。
+ * 行 = 语义字段名（FIELD_MAP 的 18 个，来自 /meta/fields）。
+ * 列 = 字段 / 当前值(tag_map 经 mutagen→semantic 反向映射) / 权威值(fieldStatusMap) / 状态 / 勾选。
+ * 拉取前只显当前值列，拉取后权威值列亮出，diff 内联（权威列下方 before 小字）。
+ * 对比/写入融入表头工具栏，写入二次确认弹窗内联（迁自 DiffView）。
+ *
+ * 约束：auto-import 已注入 ref/computed/onMounted/watch/storeToRefs。
+ */
 const props = defineProps<{
   trackId: string
+  track?: TrackItem | null
+}>()
+
+const emit = defineEmits<{
+  /** 写入成功，通知父组件刷新 track.tag_map */
+  (e: "written"): void
 }>()
 
 const store = useMetaStore()
@@ -224,95 +204,427 @@ const {
   appleSourceStatus,
   creditsSourceStatus,
   fieldStatusMap,
+  fieldMap,
+  diffLoading,
+  diffError,
+  diffResult,
+  writeLoading,
+  writeError,
+  writeResult,
 } = storeToRefs(store)
 
 const storefront = ref("us")
 const lang = ref("zh-Hans")
 const selected = ref<string[]>([])
+const showConfirm = ref(false)
 
-/** 合并字段表行（从 fieldStatusMap 派生，按字段名排序） */
-const fieldRows = computed<FieldWithStatus[]>(() =>
-  Object.values(fieldStatusMap.value).sort((a, b) =>
-    a.field.localeCompare(b.field),
-  ),
-)
+// ---------- 语义字段反向映射 ----------
 
-/** 当前勾选的权威字段（仅含 ok 状态的选中项） */
+/** codec → mutagen key 列名（FIELD_MAP 各容器列） */
+function codecColumn(codec: string | undefined): "mp4" | "flac" | "mp3" {
+  // alac/m4a → MP4 容器；flac → flac；mp3 → mp3
+  const c = (codec || "").toLowerCase()
+  if (c === "flac") return "flac"
+  if (c === "mp3") return "mp3"
+  return "mp4" // alac / m4a / mp4 / 未知都走 MP4
+}
+
+/** 语义字段 → 中文标签（FIELD_MAP 的 18 个 semantic 名） */
+const SEMANTIC_LABELS: Record<string, string> = {
+  title: "标题", artist: "艺人", album_artist: "专辑艺人", album: "专辑",
+  composer: "作曲", lyricist: "作词", producer: "制作人", mixer: "混音师",
+  engineer: "工程师", remixer: "混音师(remix)", arranger: "编曲", conductor: "指挥",
+  djmixer: "DJ混音", performer: "表演者", genre: "流派", copyright: "版权",
+  record_company: "厂牌", isrc: "ISRC", barcode: "条码",
+}
+
+/** 从 fieldMap 构建 mutagen key → semantic 反向映射（按 codec 选列） */
+const mutagenToSemantic = computed<Record<string, string>>(() => {
+  const col = codecColumn(props.track?.codec as string | undefined)
+  const out: Record<string, string> = {}
+  for (const f of fieldMap.value?.fields ?? []) {
+    const k = f[col]
+    if (k) out[k] = f.semantic
+  }
+  return out
+})
+
+/** 是否已拉取过权威值（决定权威列显示"未拉取"还是"—"） */
+const hasFetched = computed(() => Object.keys(fieldStatusMap.value).length > 0)
+
+// ---------- tag_map 解析 ----------
+
+/** 解析 track.tag_map（JSON 字符串或 object）为 Record */
+function parseTagMap(): Record<string, unknown> | null {
+  const raw = (props.track as { tag_map?: unknown } | null)?.tag_map
+  if (!raw) return null
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+  if (raw && typeof raw === "object") return raw as Record<string, unknown>
+  return null
+}
+
+/** 二进制/非文本 tag key（封面/编码工具，不当文本展示） */
+const BINARY_KEYS = new Set<string>([
+  "covr", "©cov", "©too", "@too", "tool", "encoder", "encodersettings",
+])
+
+function toStringArray(v: unknown): string[] {
+  const arr = Array.isArray(v) ? v : [v]
+  return arr.map((x) => String(x)).filter(Boolean)
+}
+
+// ---------- 统一字段表行 ----------
+
+interface UnifiedRow {
+  field: string
+  label: string
+  currentValues: string[]
+  authValues: string[]
+  source: "apple" | "credits" | null
+  status: "ok" | "missing_permanent" | "failed_retryable"
+  hasAuth: boolean
+  hasDiff: boolean
+  /** diff 对比后的 before 文本（仅 hasDiff 且已 loadDiff） */
+  diffBefore: string | null
+}
+
+/** 统一字段表：以语义字段为行，合并当前值 + 权威值 + diff before */
+const unifiedRows = computed<UnifiedRow[]>(() => {
+  const tagMap = parseTagMap() ?? {}
+  // 语义字段集合：优先用 fieldMap（18 个），降级用 SEMANTIC_LABELS
+  const semanticList =
+    fieldMap.value?.fields.map((f) => f.semantic) ?? Object.keys(SEMANTIC_LABELS)
+  // 反向：semantic → tag_map 里的 mutagen key（取反向映射命中的 key）
+  const semToMutagenKey: Record<string, string> = {}
+  for (const [mKey, sem] of Object.entries(mutagenToSemantic.value)) {
+    semToMutagenKey[sem] = mKey
+  }
+
+  const rows: UnifiedRow[] = []
+  for (const sem of semanticList) {
+    // 当前值：从 tag_map 按 mutagen key 取
+    const mKey = semToMutagenKey[sem]
+    const currentRaw = mKey ? tagMap[mKey] : undefined
+    const currentValues = currentRaw != null && currentRaw !== "" ? toStringArray(currentRaw) : []
+
+    // 权威值：从 fieldStatusMap 取
+    const auth = fieldStatusMap.value[sem]
+    const hasAuth = !!auth
+    const authValues = auth?.values ?? []
+    const status = auth?.status ?? "ok"
+    const source = auth?.source ?? null
+
+    // diff before（仅当已 loadDiff）
+    const diffEntry = diffResult.value?.diffs?.find((d) => d.field === sem)
+    const hasDiff = hasAuth && currentValues.length > 0 &&
+      JSON.stringify(currentValues) !== JSON.stringify(authValues)
+    const diffBefore = diffEntry && diffEntry.before != null
+      ? formatBefore(diffEntry.before)
+      : null
+
+    rows.push({
+      field: sem,
+      label: SEMANTIC_LABELS[sem] ?? sem,
+      currentValues,
+      authValues,
+      source,
+      status,
+      hasAuth,
+      hasDiff,
+      diffBefore,
+    })
+  }
+  return rows
+})
+
+/** 未映射到语义字段的本地 tag key（其他本地标签） */
+interface LocalRow {
+  key: string
+  label: string
+  values: string[]
+}
+
+const OTHER_LABELS: Record<string, string> = {
+  "©day": "年份", date: "年份", TDRC: "年份", "©cmt": "注释", comment: "注释",
+  COMM: "注释", "©lyr": "内嵌歌词", lyrics: "内嵌歌词", USLT: "内嵌歌词",
+  tracknumber: "音轨号", TRCK: "音轨号", discnumber: "碟号", TPOS: "碟号",
+}
+
+const otherLocalRows = computed<LocalRow[]>(() => {
+  const tagMap = parseTagMap() ?? {}
+  const mapped = new Set(Object.keys(mutagenToSemantic.value))
+  return Object.entries(tagMap)
+    .filter(([key, v]) => {
+      if (mapped.has(key)) return false
+      if (v === null || v === undefined || v === "") return false
+      if (BINARY_KEYS.has(key)) return false
+      return true
+    })
+    .map(([key, v]) => {
+      const values = toStringArray(v).map((s) => (s.length > 200 ? s.slice(0, 200) + "…" : s))
+      return { key, label: OTHER_LABELS[key] ?? key, values }
+    })
+    .filter((r) => r.values.length > 0)
+    .sort((a, b) => a.label.localeCompare(b.label))
+})
+
+// ---------- 选择 / diff / 写入（迁自 DiffView） ----------
+
+/** 当前勾选的权威字段（仅 ok 状态选中项） */
 const mergedFields = computed<AuthoritativeFields>(() => {
   const out: AuthoritativeFields = {}
   for (const k of selected.value) {
     const entry = fieldStatusMap.value[k]
-    if (entry && entry.status === "ok") {
-      out[k] = entry.values
-    }
+    if (entry && entry.status === "ok") out[k] = entry.values
   }
   return out
 })
 
 const selectedFieldCount = computed(() => Object.keys(mergedFields.value).length)
+const hasSelection = computed(() => Object.keys(mergedFields.value).length > 0)
+const canWrite = computed(() => Boolean(diffResult.value) && hasSelection.value)
 
-/** 拉取阶段文案（不暴露技术词） */
+/** diff 摘要文案（确认框用） */
+const diffSummaryText = computed(() => {
+  const diffs = diffResult.value?.diffs
+  if (!diffs || diffs.length === 0) return `${selectedFieldCount.value} 个字段的权威值`
+  const counts = { added: 0, modified: 0, removed: 0 }
+  for (const d of diffs) {
+    const kind = normalizeKind(d.kind, d.before, d.after)
+    if (kind in counts) counts[kind as keyof typeof counts]++
+  }
+  const parts: string[] = []
+  if (counts.added > 0) parts.push(`${counts.added} 新增`)
+  if (counts.modified > 0) parts.push(`${counts.modified} 修改`)
+  if (counts.removed > 0) parts.push(`${counts.removed} 删除`)
+  const total = counts.added + counts.modified + counts.removed
+  if (parts.length === 0) return `${selectedFieldCount.value} 个字段（无变更）`
+  return `${total} 个字段（${parts.join("、")}）`
+})
+
+function normalizeKind(kind: unknown, before: unknown, after: unknown): "added" | "modified" | "removed" | "unchanged" {
+  if (kind === "added" || kind === "modified" || kind === "removed" || kind === "unchanged") return kind
+  if (before === undefined && after !== undefined) return "added"
+  if (before !== undefined && after === undefined) return "removed"
+  if (JSON.stringify(before) !== JSON.stringify(after)) return "modified"
+  return "unchanged"
+}
+
+function formatBefore(v: unknown): string {
+  if (v == null) return ""
+  if (Array.isArray(v)) return v.length === 0 ? "[]" : v.join("; ")
+  if (typeof v === "string") return v
+  try {
+    return JSON.stringify(v)
+  } catch {
+    return String(v)
+  }
+}
+
 const fetchPhaseLabel = computed(() => {
   switch (fetchAllPhase.value) {
-    case "apple":
-      return "正在拉取结构化信息…"
-    case "credits":
-      return "正在拉取制作人员信息…"
-    default:
-      return "拉取中…"
+    case "apple": return "结构化信息…"
+    case "credits": return "制作人员…"
+    default: return "拉取中…"
   }
 })
+
+// ---------- actions ----------
 
 async function onFetchAll(): Promise<void> {
   selected.value = []
   store.clearDiff()
   await store.fetchAllMeta(props.trackId, storefront.value, lang.value)
-  // 拉取完成后默认全选 ok 状态字段
-  const okFields = Object.values(fieldStatusMap.value)
-    .filter((f) => f.status === "ok")
-    .map((f) => f.field)
+  const okFields = Object.values(fieldStatusMap.value).filter((f) => f.status === "ok").map((f) => f.field)
   selected.value = okFields
 }
 
 async function onRetrySource(source: "apple" | "credits"): Promise<void> {
   await store.retrySource(props.trackId, source, storefront.value, lang.value)
-  // 重试成功后补充新 ok 字段到选中列表
-  const okFields = Object.values(fieldStatusMap.value)
-    .filter((f) => f.status === "ok")
-    .map((f) => f.field)
+  const okFields = Object.values(fieldStatusMap.value).filter((f) => f.status === "ok").map((f) => f.field)
   const newSelected = new Set(selected.value)
-  for (const f of okFields) {
-    newSelected.add(f)
-  }
+  for (const f of okFields) newSelected.add(f)
   selected.value = [...newSelected]
 }
 
-function onWritten(): void {
-  // 写入成功：清空选择，字段表仍在（用户可重新勾选对比）
-  selected.value = []
+async function onCompute(): Promise<void> {
+  await store.loadDiff(props.trackId, mergedFields.value)
 }
 
-// 勾选变化时立即清空 diffResult（P0 修复：防止旧 diff 与新勾选不一致）
-watch(
-  selected,
-  () => {
-    store.clearDiff()
-  },
-  { deep: true },
-)
+async function onWrite(): Promise<void> {
+  const res = await store.doWrite(props.trackId, mergedFields.value)
+  if (res) {
+    showConfirm.value = false
+    emit("written")
+    // 写入后刷新 diff，让 before 对齐新值
+    await store.loadDiff(props.trackId, mergedFields.value)
+  }
+}
 
-// 切换 track 时重置 store 会话状态 + 本地选择
+// 勾选变化时清空 diff（防旧 diff 与新勾选不一致）
+watch(selected, () => store.clearDiff(), { deep: true })
+
+// 切换 track 重置
 watch(
   () => props.trackId,
   (next, prev) => {
     if (next !== prev) {
       store.reset("all")
       selected.value = []
+      showConfirm.value = false
     }
   },
 )
+
+// 进页拉取字段映射（构建反向映射；失败降级）
+onMounted(async () => {
+  await store.loadFieldMap()
+})
 </script>
 
 <style scoped>
-/* 全部通过 Tailwind token 类名控制 */
+/* 统一字段表：5 列定宽 grid + @media 响应式（tw 难表达多列定宽，保留 scoped） */
+.table-head,
+.table-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 1fr 64px 40px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+}
+.table-head {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--theme-text-tertiary);
+  font-weight: 500;
+  font-size: 11px;
+  background-color: var(--theme-bg-subtle);
+  border-bottom: 1px solid var(--theme-border-default);
+}
+.table-row {
+  border-bottom: 1px solid var(--theme-border-subtle);
+  transition: background-color var(--animate-duration-hover) ease;
+}
+.table-row:last-child {
+  border-bottom: none;
+}
+.table-row:hover {
+  background-color: var(--theme-bg-hover);
+}
+/* 差异行：accent-subtle 底 */
+.row-diff {
+  background-color: var(--theme-accent-subtle);
+}
+.row-disabled {
+  opacity: 0.5;
+}
+/* 权威值列：flex 纵向（主值 + before 小字） */
+.col-auth {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--theme-text-primary);
+}
+
+/* 来源级状态行（fail/neutral 底色 + justify-between） */
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--theme-border-default);
+}
+.status-fail {
+  background-color: var(--theme-danger-subtle);
+}
+
+/* 字段状态标签 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+}
+.tag-ok {
+  background-color: var(--theme-success-subtle);
+  color: var(--theme-success);
+}
+.tag-dim {
+  background-color: var(--theme-bg-subtle);
+  color: var(--theme-text-tertiary);
+}
+.tag-fail {
+  background-color: var(--theme-danger-subtle);
+  color: var(--theme-danger);
+}
+
+/* 复选框：accent-color 无 tw 等价 */
+.cb {
+  accent-color: var(--theme-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* 其他本地标签 */
+.other-local {
+  border-top: 1px solid var(--theme-border-subtle);
+}
+.other-summary {
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+.other-summary::-webkit-details-marker {
+  display: none;
+}
+.other-summary:hover {
+  color: var(--theme-text-primary);
+}
+.other-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0 16px 12px;
+}
+.other-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+.other-key {
+  font-size: 11px;
+  color: var(--theme-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .other-grid {
+    grid-template-columns: 1fr;
+  }
+  .table-head,
+  .table-row {
+    grid-template-columns: 100px 1fr 1fr 56px 36px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+}
 </style>

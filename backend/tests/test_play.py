@@ -428,8 +428,9 @@ async def test_play_alac_transcode_content_type(
     assert resp.headers["content-type"] == "audio/ogg"
     # 转码流不应有 Content-Length（长度不可预知）
     assert "content-length" not in resp.headers
-    # 转码流不应有 Accept-Ranges（不支持字节 seek）
-    assert "accept-ranges" not in resp.headers
+    # 转码流不可 seek：Accept-Ranges 必须声明 none，
+    # 否则浏览器 <audio> 尝试 Range 探测会失败（"media resource not suitable"）
+    assert resp.headers["accept-ranges"] == "none"
     # 应有 Cache-Control: no-cache
     assert resp.headers["cache-control"] == "no-cache"
     # 应有实际数据（Opus Ogg 头部）
@@ -772,5 +773,116 @@ async def test_play_transcode_normally_completes_no_kill(
     assert resp.content == b"complete opus data"
     # 正常结束：poll() 非 None，不调 kill
     assert not fake_proc.killed, "正常结束不应调 kill"
+
+    reset_ffmpeg_probe()
+
+
+# ---------------------------------------------------------------------------
+# 回归：含封面图（视频流）的 m4a 转码后只产出 Opus 音频流
+# ---------------------------------------------------------------------------
+
+
+async def test_play_transcode_strips_video_stream(
+    store: IndexStore, client: AsyncClient, monkeypatch, tmp_path  # type: ignore[no-untyped-def]
+) -> None:
+    """含视频流（封面图）的输入转码后只产出 Opus 音频流，不含 theora 视频。
+
+    回归 bug：原 ffmpeg 命令缺 -vn/-map，m4a 嵌入的封面图（mov_text/cover
+    视频轨）被默认映射成 theora 视频流输出，浏览器 <audio> 拿到含视频流
+    的 ogg 判定 "media resource not suitable" 拒绝播放。
+
+    复现方式：用真实 ffmpeg 合成"静音音频 + 一张纯色封面图"的 mp4 测试输入，
+    走真实 transcode_stream 转码，对输出用 ffprobe 验证只有 Audio: opus 流。
+    """
+    reset_ffmpeg_probe()
+    monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
+
+    from backend.play.transcode import is_ffmpeg_available
+
+    if not is_ffmpeg_available():
+        pytest.skip("ffmpeg not available — transcode regression requires ffmpeg")
+
+    import shutil as _shutil
+
+    ffprobe_bin = _shutil.which("ffprobe")
+    if not ffprobe_bin:
+        pytest.skip("ffprobe not available — cannot verify output stream type")
+
+    import subprocess as _sp
+    import wave
+
+    # 1. 合成静音 WAV（音频源）
+    wav_path = tmp_path / "silence.wav"
+    with wave.open(str(wav_path), "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(44100)
+        wf.writeframes(b"\x00\x00" * 4410)  # 0.1 秒静音
+
+    # 2. 合成纯色 PNG 封面图（视频源）—— 用 ffmpeg 生成
+    cover_path = tmp_path / "cover.png"
+    _sp.run(
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=blue:s=64x64:d=0.1",
+         "-frames:v", "1", str(cover_path)],
+        check=True, capture_output=True,
+    )
+
+    # 3. 合成含封面图的 mp4（音频 + 视频流，模拟真实带封面的 m4a）
+    mp4_path = tmp_path / "with_cover.m4a"
+    _sp.run(
+        ["ffmpeg", "-y",
+         "-i", str(wav_path),
+         "-i", str(cover_path),
+         "-map", "0:a:0", "-map", "1:v:0",
+         "-c:a", "aac", "-c:v", "libx264",
+         "-shortest", str(mp4_path)],
+        check=True, capture_output=True,
+    )
+
+    # 4. 入库，标记 alac（走转码分支）
+    rowid = await store.insert_track(
+        title="WithCover",
+        artist="A",
+        path=str(mp4_path).replace("\\", "/"),
+        codec="alac",
+        duration=100,
+        size=mp4_path.stat().st_size,
+    )
+
+    # 5. 请求转码，落盘输出
+    resp = await client.get(f"/api/play/{rowid}")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/ogg"
+    assert len(resp.content) > 0
+
+    # 6. ffprobe 验证：输出只能是 Audio: opus，不能有 Video: theora
+    out_path = tmp_path / "out.ogg"
+    out_path.write_bytes(resp.content)
+
+    probe = _sp.run(
+        [ffprobe_bin, "-hide_banner", "-show_streams", str(out_path)],
+        capture_output=True, text=True, check=True,
+    )
+    # 解析流类型：提取所有 codec_type= 行
+    stream_types = [
+        line.split("=", 1)[1].strip()
+        for line in probe.stdout.splitlines()
+        if line.startswith("codec_type=")
+    ]
+    assert stream_types, "ffprobe 未解析出任何流（输出可能损坏）"
+    assert "video" not in stream_types, (
+        f"转码输出含视频流（{stream_types}），应为纯音频——回归 -vn 丢失"
+    )
+    assert "audio" in stream_types, f"转码输出无音频流（{stream_types}）"
+
+    # 进一步验证音频 codec 是 opus
+    codec_names = [
+        line.split("=", 1)[1].strip()
+        for line in probe.stdout.splitlines()
+        if line.startswith("codec_name=")
+    ]
+    assert "opus" in codec_names, (
+        f"音频 codec 非 opus（{codec_names}）——转码输出格式错误"
+    )
 
     reset_ffmpeg_probe()
