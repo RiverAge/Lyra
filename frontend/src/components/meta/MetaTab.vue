@@ -55,14 +55,14 @@
 
       <!-- 来源级状态 -->
       <div v-if="appleSourceStatus === 'failed_retryable' || creditsSourceStatus !== 'ok'" class="flex flex-col gap-2 px-4 pt-3">
-        <div v-if="appleSourceStatus === 'failed_retryable'" class="status-row status-fail">
+        <div v-if="appleSourceStatus === 'failed_retryable'" class="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger-subtle px-3 py-2">
           <span class="text-sm text-danger">结构化信息拉取失败，可重试</span>
           <BaseButton variant="ghost" size="sm" icon="RefreshCw" :disabled="fetchAllLoading" @click="onRetrySource('apple')">重试</BaseButton>
         </div>
-        <div v-if="creditsSourceStatus === 'missing_permanent'" class="status-row">
+        <div v-if="creditsSourceStatus === 'missing_permanent'" class="flex items-center justify-between gap-3 rounded-sm border border-line px-3 py-2">
           <span class="text-sm text-secondary">该曲目暂无制作人员信息</span>
         </div>
-        <div v-if="creditsSourceStatus === 'failed_retryable'" class="status-row status-fail">
+        <div v-if="creditsSourceStatus === 'failed_retryable'" class="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger-subtle px-3 py-2">
           <span class="text-sm text-danger">制作人员信息拉取失败，可重试</span>
           <BaseButton variant="ghost" size="sm" icon="RefreshCw" :disabled="fetchAllLoading" @click="onRetrySource('credits')">重试</BaseButton>
         </div>
@@ -80,7 +80,7 @@
         <div class="table-head">
           <div class="truncate text-sm font-medium text-primary">字段</div>
           <div class="min-w-0 break-words text-sm text-secondary">当前值</div>
-          <div class="col-auth">权威值</div>
+          <div class="min-w-0 flex flex-col gap-0.5 text-[13px] text-primary">权威值</div>
           <div class="text-center">状态</div>
           <div class="text-center">选</div>
         </div>
@@ -88,14 +88,14 @@
           v-for="row in unifiedRows"
           :key="row.field"
           class="table-row"
-          :class="{ 'row-diff': row.hasDiff, 'row-disabled': row.hasAuth && row.status !== 'ok' }"
+          :class="rowClass(row)"
         >
           <div class="truncate text-sm font-medium text-primary">{{ row.label }}</div>
           <div class="min-w-0 break-words text-sm text-secondary">
             <span v-if="row.currentValues.length > 0">{{ row.currentValues.join("; ") }}</span>
             <span v-else class="text-tertiary">—</span>
           </div>
-          <div class="col-auth">
+          <div class="min-w-0 flex flex-col gap-0.5 text-[13px] text-primary">
             <template v-if="row.hasAuth">
               <span class="break-words">{{ row.authValues.join("; ") }}</span>
               <!-- diff 内联：before 小字（仅 hasDiff 且已对比） -->
@@ -105,10 +105,10 @@
             <span v-else class="text-xs text-tertiary">未拉取</span>
           </div>
           <div class="text-center">
-            <span v-if="!row.hasAuth" class="tag tag-dim">本地</span>
-            <span v-else-if="row.status === 'missing_permanent'" class="tag tag-dim">暂无</span>
-            <span v-else-if="row.status === 'failed_retryable'" class="tag tag-fail">失败</span>
-            <span v-else class="tag tag-ok">就绪</span>
+            <span v-if="!row.hasAuth" class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary">本地</span>
+            <span v-else-if="row.status === 'missing_permanent'" class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary">暂无</span>
+            <span v-else-if="row.status === 'failed_retryable'" class="inline-flex items-center rounded-sm bg-danger-subtle px-1.5 py-0.5 text-[11px] font-medium text-danger">失败</span>
+            <span v-else class="inline-flex items-center rounded-sm bg-success-subtle px-1.5 py-0.5 text-[11px] font-medium text-success">就绪</span>
           </div>
           <div class="text-center">
             <input
@@ -126,13 +126,13 @@
       </div>
 
       <!-- 其他本地标签（未映射到语义字段） -->
-      <details v-if="otherLocalRows.length > 0" class="other-local">
-        <summary class="other-summary">
+      <details v-if="otherLocalRows.length > 0" class="border-t border-line-subtle">
+        <summary class="other-summary list-none px-4 py-2.5 text-xs text-secondary cursor-pointer hover:text-primary">
           其他本地标签（{{ otherLocalRows.length }}）
         </summary>
-        <div class="other-grid">
-          <div v-for="row in otherLocalRows" :key="row.key" class="other-row">
-            <div class="other-key font-mono" :title="row.key">{{ row.label }}</div>
+        <div class="grid grid-cols-2 max-sm:grid-cols-1 px-4 pb-3">
+          <div v-for="row in otherLocalRows" :key="row.key" class="grid grid-cols-[96px_1fr] items-baseline gap-3 border-b border-line-subtle py-1.5">
+            <div class="font-mono text-[11px] text-tertiary overflow-hidden text-ellipsis whitespace-nowrap" :title="row.key">{{ row.label }}</div>
             <div class="break-words text-xs text-secondary">{{ row.values.join("; ") }}</div>
           </div>
         </div>
@@ -292,6 +292,14 @@ interface UnifiedRow {
   hasDiff: boolean
   /** diff 对比后的 before 文本（仅 hasDiff 且已 loadDiff） */
   diffBefore: string | null
+}
+
+/** 行级动态 class：差异行 accent-subtle 底；权威存在但状态非 ok 的行半透明 */
+function rowClass(row: UnifiedRow): string {
+  const cls: string[] = []
+  if (row.hasDiff) cls.push("bg-accent-subtle")
+  if (row.hasAuth && row.status !== "ok") cls.push("opacity-50")
+  return cls.join(" ")
 }
 
 /** 统一字段表：以语义字段为行，合并当前值 + 权威值 + diff before */
@@ -489,7 +497,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-/* 统一字段表：5 列定宽 grid + @media 响应式（tw 难表达多列定宽，保留 scoped） */
+/* 统一字段表：5 列定宽 grid + @media 响应式（tw 难表达多列定宽 + last-child，保留 scoped） */
 .table-head,
 .table-row {
   display: grid;
@@ -517,58 +525,6 @@ onMounted(async () => {
 .table-row:hover {
   background-color: var(--theme-bg-hover);
 }
-/* 差异行：accent-subtle 底 */
-.row-diff {
-  background-color: var(--theme-accent-subtle);
-}
-.row-disabled {
-  opacity: 0.5;
-}
-/* 权威值列：flex 纵向（主值 + before 小字） */
-.col-auth {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 13px;
-  color: var(--theme-text-primary);
-}
-
-/* 来源级状态行（fail/neutral 底色 + justify-between） */
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--theme-border-default);
-}
-.status-fail {
-  background-color: var(--theme-danger-subtle);
-}
-
-/* 字段状态标签 */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-}
-.tag-ok {
-  background-color: var(--theme-success-subtle);
-  color: var(--theme-success);
-}
-.tag-dim {
-  background-color: var(--theme-bg-subtle);
-  color: var(--theme-text-tertiary);
-}
-.tag-fail {
-  background-color: var(--theme-danger-subtle);
-  color: var(--theme-danger);
-}
 
 /* 复选框：accent-color 无 tw 等价 */
 .cb {
@@ -578,48 +534,12 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-/* 其他本地标签 */
-.other-local {
-  border-top: 1px solid var(--theme-border-subtle);
-}
-.other-summary {
-  padding: 10px 16px;
-  font-size: 12px;
-  color: var(--theme-text-secondary);
-  cursor: pointer;
-  list-style: none;
-}
+/* details summary：隐藏原生三角（list-none 在部分浏览器不够，::-webkit 补刀） */
 .other-summary::-webkit-details-marker {
   display: none;
 }
-.other-summary:hover {
-  color: var(--theme-text-primary);
-}
-.other-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  padding: 0 16px 12px;
-}
-.other-row {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 12px;
-  align-items: baseline;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--theme-border-subtle);
-}
-.other-key {
-  font-size: 11px;
-  color: var(--theme-text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 @media (max-width: 640px) {
-  .other-grid {
-    grid-template-columns: 1fr;
-  }
   .table-head,
   .table-row {
     grid-template-columns: 100px 1fr 1fr 56px 36px;

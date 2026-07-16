@@ -201,6 +201,23 @@ html {
     box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
   }
 
+  /* 原生表单元素去壳：appearance:none（select 去原生箭头）+ font:inherit（继承字体）。
+     tw 无等价类，集中定义供 FilterBar / LyricsEditorView 等 select 复用。 */
+  .select-bare {
+    appearance: none;
+    -webkit-appearance: none;
+    font: inherit;
+  }
+
+  /* 选中态色条：左侧 inset 2px 色条 + accent-subtle 底 + accent 文字 + 中粗。
+     tw 无 inset 边条，集中定义供 SyncPreview / TtmlPreview 歌词行、MatchPanel 候选项复用。 */
+  .inset-bar-active {
+    box-shadow: inset 2px 0 0 var(--theme-accent);
+    background-color: var(--theme-accent-subtle);
+    color: var(--theme-accent);
+    font-weight: var(--font-weight-medium);
+  }
+
   /* accent 背景工具类（B 禁渐变，指向纯墨色） */
   .bg-accent-gradient {
     background-color: var(--theme-accent);

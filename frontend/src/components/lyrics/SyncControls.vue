@@ -13,12 +13,12 @@
     <!-- 进度条（可拖拽 seek） -->
     <div
       ref="progressBarEl"
-      class="sc-bar"
+      class="group relative h-1 min-w-0 flex-1 cursor-pointer rounded-full bg-hover"
       @mousedown="onScrubStart"
     >
-      <div class="sc-bar-fill" :style="{ width: audio.progressPercent.value + '%' }" />
+      <div class="absolute left-0 top-0 h-full rounded-full bg-accent" :style="{ width: audio.progressPercent.value + '%' }" />
       <div
-        class="sc-bar-thumb"
+        class="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
         :style="{ left: audio.progressPercent.value + '%' }"
       />
     </div>
@@ -45,7 +45,7 @@
       min="0"
       max="1"
       step="0.01"
-      class="sc-vol"
+      class="sc-vol h-1 w-14 cursor-pointer"
       :value="audio.volume.value"
       @input="onVolumeInput"
     >
@@ -122,45 +122,8 @@ function formatTime(sec: number): string {
 </script>
 
 <style scoped>
-/* 进度条：动态 width/left + hover 显隐 thumb（保留 scoped） */
-.sc-bar {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  height: 4px;
-  border-radius: var(--radius-full);
-  background-color: var(--theme-bg-hover);
-  cursor: pointer;
-}
-.sc-bar-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 100%;
-  border-radius: var(--radius-full);
-  background-color: var(--theme-accent);
-}
-.sc-bar-thumb {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background-color: var(--theme-bg-surface);
-  box-shadow: var(--theme-shadow-sm);
-  opacity: 0;
-  transition: opacity var(--animate-duration-hover) ease;
-}
-.sc-bar:hover .sc-bar-thumb {
-  opacity: 1;
-}
-
-/* 音量滑块：accent-color 无 tw 等价 */
+/* 音量滑块：accent-color 无 tw 等价（width/height/cursor 转 tw，仅 accent-color 保留 scoped） */
 .sc-vol {
-  width: 56px;
-  height: 4px;
-  cursor: pointer;
   accent-color: var(--theme-accent);
 }
 </style>

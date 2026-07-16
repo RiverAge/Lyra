@@ -12,8 +12,8 @@
         v-for="(line, idx) in lines"
         :key="idx"
         :ref="(el) => setLineRef(el, idx)"
-        class="sp-line"
-        :class="{ 'sp-line-active': idx === currentIndex }"
+        class="whitespace-pre-wrap break-words rounded-sm px-2 py-0.5 my-0.5 text-[13px] leading-relaxed text-secondary transition-colors"
+        :class="{ 'inset-bar-active': idx === currentIndex }"
       >
         {{ line.text }}
       </p>
@@ -100,22 +100,5 @@ watch(currentIndex, async (idx) => {
 </script>
 
 <style scoped>
-/* 同步歌词行基础 + 当前行高亮（inset box-shadow 色条，tw 无法表达） */
-.sp-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 2px 8px;
-  margin: 1px 0;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  color: var(--theme-text-secondary);
-  line-height: 1.5;
-  transition: background-color var(--animate-duration-hover) ease, color var(--animate-duration-hover) ease;
-}
-.sp-line-active {
-  background-color: var(--theme-accent-subtle);
-  color: var(--theme-accent);
-  font-weight: 500;
-  box-shadow: inset 2px 0 0 var(--theme-accent);
-}
+/* 全部通过 Tailwind token 类名 + 全局 .inset-bar-active 控制 */
 </style>

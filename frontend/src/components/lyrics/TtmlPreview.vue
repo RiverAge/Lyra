@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootEl" class="ttml-preview">
+  <div ref="rootEl" class="ttml-preview rounded-md border border-line-subtle bg-surface">
     <!-- 头部：行数 + 预览/同步/原始 tab -->
     <div class="flex items-center justify-between border-b border-line-subtle px-3 py-2">
       <span class="text-xs text-tertiary">{{ lineCount }} 行</span>
@@ -41,7 +41,7 @@
     </p>
 
     <!-- 预览视图：逐行纯文本（不高亮） -->
-    <div v-else-if="mode === 'rendered'" class="tp-body">
+    <div v-else-if="mode === 'rendered'" class="tp-body max-h-[var(--tp-max-height,320px)] overflow-auto px-3 py-2">
       <p
         v-for="(line, idx) in sync.lines.value"
         :key="idx"
@@ -55,13 +55,13 @@
     </div>
 
     <!-- 同步视图：当前行高亮 + 自动滚动 -->
-    <div v-else-if="mode === 'sync'" ref="syncBodyEl" class="tp-body">
+    <div v-else-if="mode === 'sync'" ref="syncBodyEl" class="tp-body max-h-[var(--tp-max-height,320px)] overflow-auto px-3 py-2">
       <p
         v-for="(line, idx) in sync.lines.value"
         :key="idx"
         :ref="(el) => setLineRef(el, idx)"
-        class="tp-line"
-        :class="{ 'tp-line-active': idx === sync.currentIndex.value }"
+        class="whitespace-pre-wrap break-words rounded-sm px-2 py-0.5 my-0.5 text-[13px] leading-relaxed text-secondary transition-colors"
+        :class="{ 'inset-bar-active': idx === sync.currentIndex.value }"
       >
         {{ line.text }}
       </p>
@@ -74,7 +74,7 @@
     </div>
 
     <!-- 原始视图：TTML 源码 -->
-    <pre v-else class="tp-raw"><code>{{ ttml }}</code></pre>
+    <pre v-else class="max-h-[var(--tp-max-height,320px)] overflow-auto m-0 px-3 py-2 font-mono text-[11px] text-secondary whitespace-pre-wrap break-all leading-relaxed"><code>{{ ttml }}</code></pre>
   </div>
 </template>
 
@@ -141,50 +141,9 @@ watch(
 </script>
 
 <style scoped>
-/* v-bind(maxHeight) 注入 --tp-max-height（根元素内联 style），
-   .tp-body/.tp-raw 用 var(--tp-max-height, 320px) 读它 */
+/* v-bind(maxHeight) 注入 --tp-max-height，根元素内联 style，
+   .tp-body/.tp-raw 的 tw 任意值 max-h-[var(--tp-max-height,320px)] 读它 */
 .ttml-preview {
-  border: 1px solid var(--theme-border-line-subtle, var(--theme-border-subtle));
-  border-radius: var(--radius-md);
-  background-color: var(--theme-bg-surface);
   --tp-max-height: v-bind(maxHeight ? maxHeight : "320px");
-}
-
-/* 预览/同步/原始主体：max-height 用 v-bind 变量 */
-.tp-body {
-  max-height: var(--tp-max-height, 320px);
-  overflow: auto;
-  padding: 8px 12px;
-}
-.tp-raw {
-  max-height: var(--tp-max-height, 320px);
-  overflow: auto;
-  margin: 0;
-  padding: 8px 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--theme-text-secondary);
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.5;
-}
-
-/* 同步模式歌词行基础 + 当前行高亮（inset box-shadow 色条，tw 无法表达） */
-.tp-line {
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 2px 8px;
-  margin: 1px 0;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  color: var(--theme-text-secondary);
-  line-height: 1.5;
-  transition: background-color var(--animate-duration-hover) ease, color var(--animate-duration-hover) ease;
-}
-.tp-line-active {
-  background-color: var(--theme-accent-subtle);
-  color: var(--theme-accent);
-  font-weight: 500;
-  box-shadow: inset 2px 0 0 var(--theme-accent);
 }
 </style>

@@ -23,7 +23,7 @@
           <div class="relative flex items-center">
             <select
               v-model="sourceSel"
-              class="select-el"
+              class="select-bare input-ring w-[140px] cursor-pointer rounded-sm border border-line bg-surface py-1.5 pl-3 pr-7 text-[13px] text-primary hover:not-disabled:border-line-strong disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="store.loading || store.saving"
               @change="onSourceChange"
             >
@@ -31,7 +31,7 @@
               <option value="netease">netease</option>
               <option value="qq">qq</option>
             </select>
-            <Icon name="ChevronDown" :size="14" class="select-chevron" />
+            <Icon name="ChevronDown" :size="14" class="pointer-events-none absolute right-2.5 text-tertiary" />
           </div>
         </label>
         <BaseButton
@@ -96,10 +96,10 @@
     </div>
 
     <!-- 保存反馈 -->
-    <div v-if="store.lastSavePath" class="alert alert-success">
+    <div v-if="store.lastSavePath" class="mt-3.5 rounded-md border border-success/30 bg-success-subtle px-3 py-2 text-[13px] leading-normal text-success">
       已写入：<span class="font-mono">{{ store.lastSavePath }}</span>
     </div>
-    <div v-if="store.saveError" class="alert alert-fail">{{ store.saveError }}</div>
+    <div v-if="store.saveError" class="mt-3.5 rounded-md border border-danger/30 bg-danger-subtle px-3 py-2 text-[13px] leading-normal text-danger">{{ store.saveError }}</div>
   </div>
 </template>
 
@@ -241,49 +241,5 @@ async function onSave(): Promise<void> {
 </script>
 
 <style scoped>
-/* source 下拉：appearance:none + 自定义 padding-right + focus ring（tw 无法表达 focus box-shadow ring） */
-.select-el {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 1px solid var(--theme-border-default);
-  background-color: var(--theme-bg-surface);
-  border-radius: var(--radius-sm);
-  padding: 6px 28px 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--theme-text-primary);
-  cursor: pointer;
-  transition: border-color var(--animate-duration-hover) ease, box-shadow var(--animate-duration-hover) ease;
-}
-.select-el:hover:not(:disabled) {
-  border-color: var(--theme-border-strong);
-}
-.select-el:focus {
-  outline: none;
-  border-color: var(--theme-accent);
-  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
-}
-.select-chevron {
-  position: absolute;
-  right: 10px;
-  pointer-events: none;
-  color: var(--theme-text-tertiary);
-}
-
-/* 提示条配色 */
-.alert {
-  margin-top: 14px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--theme-border-default);
-  font-size: 13px;
-}
-.alert-success {
-  background-color: var(--theme-success-subtle);
-  color: var(--theme-success);
-}
-.alert-fail {
-  background-color: var(--theme-danger-subtle);
-  color: var(--theme-danger);
-}
+/* 全部通过 Tailwind token 类名 + 全局 .select-bare/.input-ring 控制 */
 </style>

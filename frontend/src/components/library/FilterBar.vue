@@ -1,13 +1,15 @@
 <template>
-  <div class="toolbar">
+  <div class="flex items-center gap-2">
     <!-- 艺人：文本模糊筛选 -->
-    <div class="filter-text">
+    <div
+      class="flex items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1.5 transition-colors focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(24,24,27,0.08)]"
+    >
       <Icon name="Search" :size="14" class="shrink-0 text-tertiary" />
       <input
         :value="filters.artist"
         type="text"
         placeholder="艺人"
-        class="filter-input w-24 border-none bg-transparent text-sm text-primary outline-none placeholder:text-tertiary"
+        class="w-24 border-none bg-transparent text-sm text-primary outline-none placeholder:text-tertiary [font:inherit]"
         @input="onText('artist', $event)"
       >
       <button
@@ -19,13 +21,15 @@
     </div>
 
     <!-- 专辑：文本模糊筛选 -->
-    <div class="filter-text">
+    <div
+      class="flex items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 py-1.5 transition-colors focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(24,24,27,0.08)]"
+    >
       <Icon name="Search" :size="14" class="shrink-0 text-tertiary" />
       <input
         :value="filters.album"
         type="text"
         placeholder="专辑"
-        class="filter-input w-24 border-none bg-transparent text-sm text-primary outline-none placeholder:text-tertiary"
+        class="w-24 border-none bg-transparent text-sm text-primary outline-none placeholder:text-tertiary [font:inherit]"
         @input="onText('album', $event)"
       >
       <button
@@ -37,16 +41,16 @@
     </div>
 
     <!-- 格式：固定列表下拉 -->
-    <div class="filter-select relative flex items-center">
+    <div class="relative flex items-center">
       <select
         :value="filters.codec"
-        class="filter-input filter-select-el"
+        class="select-bare input-ring w-[120px] cursor-pointer rounded-sm border border-line bg-surface py-1.5 pl-3 pr-7 text-sm text-primary"
         @change="onCodec"
       >
         <option value="">格式（全部）</option>
         <option v-for="c in codecOptions" :key="c" :value="c">{{ c }}</option>
       </select>
-      <Icon name="ChevronDown" :size="14" class="filter-chevron" />
+      <Icon name="ChevronDown" :size="14" class="pointer-events-none absolute right-2.5 text-tertiary" />
     </div>
 
     <div class="flex-1" />
@@ -109,48 +113,5 @@ function clear(key: keyof LibraryFilters): void {
 </script>
 
 <style scoped>
-/* toolbar：FilterBar 内部 flex 布局容器。
-   margin-bottom/border-bottom 不在此定义（由消费方控制页面级间距），
-   消费方用 tw class（如 flex-1）控制自身在父容器的占位，无需 :deep 穿透。 */
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* 文本筛选框容器：focus-within 非标准 ring（box-shadow，保留 scoped） */
-.filter-text {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--theme-border-default);
-  background-color: var(--theme-bg-surface);
-  transition: border-color var(--animate-duration-hover) ease;
-}
-.filter-text:focus-within {
-  border-color: var(--theme-accent);
-  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.08);
-}
-
-/* input/select 共享 font:inherit（消除原生表单字体差异） */
-.filter-input {
-  font: inherit;
-}
-
-/* codec 下拉：appearance:none + padding-right 给 chevron 留位 */
-.filter-select-el {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 28px;
-  width: 120px;
-  cursor: pointer;
-}
-.filter-chevron {
-  position: absolute;
-  right: 10px;
-  pointer-events: none;
-  color: var(--theme-text-tertiary);
-}
+/* 全部通过 Tailwind token 类名 + 全局 .select-bare/.input-ring 控制 */
 </style>

@@ -43,14 +43,15 @@
           <li
             v-for="(c, idx) in store.candidates"
             :key="idx"
-            :class="isSelected(c) ? 'cand cand-selected' : 'cand'"
+            class="relative flex cursor-pointer items-center gap-1.5 rounded-sm px-2.5 py-1.5 transition-colors hover:bg-hover"
+            :class="isSelected(c) ? 'cand-selected bg-accent-subtle' : ''"
             @click="onSelect(c)"
           >
             <SourceIcon v-if="hasLogo(c.source)" :source="c.source" :size="14" class="shrink-0" />
-            <span v-else :class="sourceBadgeClass(c.source)" class="src-badge">
+            <span v-else class="inline-flex shrink-0 items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium" :class="sourceBadgeClass(c.source)">
               {{ sourceLabel(c.source) }}
             </span>
-            <span class="flex-1 min-w-0 truncate text-sm text-primary">{{ c.title }}</span>
+            <span class="min-w-0 flex-1 truncate text-sm text-primary">{{ c.title }}</span>
             <span class="shrink-0 font-mono text-xs text-secondary tabular-nums">{{ c.score.toFixed(1) }}</span>
           </li>
         </ul>
@@ -61,7 +62,7 @@
       <div class="min-w-0 p-4">
         <!-- 决策徽章 + reason -->
         <div class="flex flex-wrap items-center gap-2.5 mb-3">
-          <span :class="decisionClass" class="decision-badge">
+          <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium" :class="decisionBadgeClass">
             <Icon :name="decisionIcon" :size="13" />
             {{ decisionLabel }}
           </span>
@@ -75,18 +76,18 @@
 
         <template v-else-if="store.selectedCandidate">
           <!-- 选中候选信息 -->
-          <div class="cand-info">
+          <div class="flex items-center justify-between gap-3 rounded-md bg-subtle px-3 py-2.5">
             <div class="flex min-w-0 items-center gap-2">
               <SourceIcon v-if="hasLogo(store.selectedCandidate.source)" :source="store.selectedCandidate.source" :size="16" class="shrink-0" />
-              <span v-else :class="sourceBadgeClass(store.selectedCandidate.source)" class="src-badge">
+              <span v-else class="inline-flex shrink-0 items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium" :class="sourceBadgeClass(store.selectedCandidate.source)">
                 {{ sourceLabel(store.selectedCandidate.source) }}
               </span>
               <span class="truncate text-sm font-medium text-primary">{{ store.selectedCandidate.title }}</span>
               <span class="shrink-0 text-xs text-tertiary">{{ store.selectedCandidate.artists.join("、") }}</span>
             </div>
             <div class="flex shrink-0 items-center gap-2">
-              <div class="score-bar">
-                <div class="score-fill" :class="scoreClass(store.selectedCandidate.score)" :style="{ width: store.selectedCandidate.score + '%' }" />
+              <div class="h-1 w-[60px] overflow-hidden rounded-full bg-hover">
+                <div class="h-full rounded-full" :class="scoreClass(store.selectedCandidate.score)" :style="{ width: store.selectedCandidate.score + '%' }" />
               </div>
               <span class="font-mono text-xs text-secondary tabular-nums">{{ store.selectedCandidate.score.toFixed(1) }}</span>
             </div>
@@ -195,17 +196,17 @@ function isSelected(c: Candidate): boolean {
   return s.id === c.id && s.source === c.source
 }
 
-/** 决策徽章配色 */
-const decisionClass = computed(() => {
+/** 决策徽章配色：accept=success / review=accent / reject=danger / neutral=subtle+tertiary */
+const decisionBadgeClass = computed(() => {
   switch (store.decision) {
     case "accept":
-      return "decision-accept"
+      return "bg-success-subtle text-success"
     case "review":
-      return "decision-review"
+      return "bg-accent-subtle text-accent"
     case "reject":
-      return "decision-reject"
+      return "bg-danger-subtle text-danger"
     default:
-      return "decision-neutral"
+      return "bg-subtle text-tertiary"
   }
 })
 
@@ -270,13 +271,13 @@ function hasLogo(source: string): boolean {
 function sourceBadgeClass(source: string): string {
   switch (source) {
     case "netease":
-      return "src-netease"
+      return "bg-success-subtle text-success"
     case "qq":
-      return "src-qq"
+      return "bg-warning-subtle text-warning"
     case "apple":
-      return "src-apple"
+      return "bg-accent-subtle text-accent"
     default:
-      return "src-default"
+      return "bg-surface text-secondary"
   }
 }
 
@@ -296,9 +297,9 @@ function sourceLabel(source: string): string {
 /** score 进度条配色：用中性墨色梯度，避免与来源徽章（绿/黄/红/彩 logo）撞色。
  * accept=深墨黑 / review=中灰 / reject=浅灰，自成体系不抢来源色。 */
 function scoreClass(score: number): string {
-  if (score >= 86) return "fill-accept"
-  if (score >= 74) return "fill-review"
-  return "fill-reject"
+  if (score >= 86) return "bg-accent"
+  if (score >= 74) return "bg-secondary"
+  return "bg-tertiary"
 }
 </script>
 
@@ -326,23 +327,7 @@ function scoreClass(score: number): string {
   overflow: auto;
 }
 
-/* 候选项：relative + 选中态左 2px ::before 色条（tw 无法表达伪元素色条） */
-.cand {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color var(--animate-duration-hover) ease;
-}
-.cand:hover {
-  background-color: var(--theme-bg-hover);
-}
-.cand-selected {
-  background-color: var(--theme-accent-subtle);
-}
+/* 选中候选项左 2px ::before 色条（tw 无法表达伪元素色条；底色已用 bg-accent-subtle） */
 .cand-selected::before {
   content: "";
   position: absolute;
@@ -353,61 +338,4 @@ function scoreClass(score: number): string {
   border-radius: 1px;
   background-color: var(--theme-accent);
 }
-
-/* 选中候选信息条 */
-.cand-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  background-color: var(--theme-bg-subtle);
-  border-radius: var(--radius-md);
-}
-
-/* 得分进度条（动态宽度 + 条件色） */
-.score-bar {
-  width: 60px;
-  height: 4px;
-  border-radius: var(--radius-full);
-  background-color: var(--theme-bg-hover);
-  overflow: hidden;
-}
-.score-fill {
-  height: 100%;
-  border-radius: var(--radius-full);
-}
-.fill-accept { background-color: var(--theme-accent); }
-.fill-review { background-color: var(--theme-text-secondary); }
-.fill-reject { background-color: var(--theme-text-tertiary); }
-
-/* 决策徽章配色（decisionClass 动态返回的类名） */
-.decision-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 500;
-}
-.decision-accept { background-color: var(--theme-success-subtle); color: var(--theme-success); }
-.decision-review { background-color: var(--theme-accent-subtle); color: var(--theme-accent); }
-.decision-reject { background-color: var(--theme-danger-subtle); color: var(--theme-danger); }
-.decision-neutral { background-color: var(--theme-bg-subtle); color: var(--theme-text-tertiary); }
-
-/* 来源徽章配色（sourceBadgeClass 动态返回的类名；netease/qq 有 logo 时用 SourceIcon 不走这里） */
-.src-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-.src-netease { background-color: var(--theme-success-subtle); color: var(--theme-success); }
-.src-qq { background-color: var(--theme-warning-subtle); color: var(--theme-warning); }
-.src-apple { background-color: var(--theme-accent-subtle); color: var(--theme-accent); }
-.src-default { background-color: var(--theme-bg-surface); color: var(--theme-text-secondary); }
 </style>
