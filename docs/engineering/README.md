@@ -10,6 +10,8 @@
 
 ### frontend/ — 前端
 - [`设计系统.md`](./frontend/设计系统.md) — 设计 token(色彩/字号/间距/圆角/阴影)、单一浅色主题(墨黑强调色)、标准动画+性能约束、组件视觉规范、Tailwind v4 映射
+- [`Tailwind-v4集成陷阱集.md`](./frontend/Tailwind-v4集成陷阱集.md) — 三类 v4 集成陷阱索引:①v3 config 残留 ②theme 双源冲突(bg-bg-*/data-theme) ③Preflight 刷新黑框,每项根因+修复+真源指针
+- [`刷新黑框-Preflight-border与reduced-motion.md`](./frontend/刷新黑框-Preflight-border与reduced-motion.md) — F5 刷新瞬时黑框根因(Preflight `border:0 solid` × border-color 过渡 × reduce-motion),定位弯路 + 排查 checklist
 
 ## 新文档写入规则
 
