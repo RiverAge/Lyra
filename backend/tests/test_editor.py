@@ -58,7 +58,7 @@ _TTML_WITH_SPANS = (
     "    </metadata>\n"
     "  </head>\n"
     '  <body xml:lang="und">\n'
-    "    <div>\n"
+    '    <div role="main" xml:lang="und">\n'
     '      <p key="L1" begin="00:00:00.000" end="00:00:05.000">'
     '<span begin="00:00:00.000" end="00:00:00.800">你</span>'
     '<span begin="00:00:00.800" end="00:00:01.600">好</span>'

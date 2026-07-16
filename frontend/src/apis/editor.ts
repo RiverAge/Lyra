@@ -37,10 +37,17 @@ export interface LineModel {
   text: string
 }
 
-/** 整篇歌词文档：行列表 + 来源。 */
+/** 整篇歌词文档：行列表 + 来源 + 翻译/注音行（多 div track，round-trip 透传）。
+ *
+ * translation_lines/transliteration_lines 是后端多 div track 的翻译/注音行
+ * （方案 B，遵循 TTML 协议）。编辑器 UI 不编辑这两组，但 round-trip 保留：
+ * GET 收到、POST 原样发回，不丢。老 sidecar 无这两组时后端返回空数组。
+ */
 export interface LyricDocModel {
   lines: LineModel[]
   source: string
+  translation_lines: LineModel[]
+  transliteration_lines: LineModel[]
 }
 
 /** PATCH 请求体：span_index 给出→改 span；null→改 line。 */

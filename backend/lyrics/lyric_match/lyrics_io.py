@@ -592,10 +592,11 @@ def save_ttml(
 
     try:
         if lyric_source_suffix == "qq":
-            # QQ payload carries _qrc_xml; convert via qrc_xml_to_ttml.
+            # QQ payload carries _qrc_xml + _qrc_ts_xml + _qrc_roma_xml;
+            # convert via qrc_xml_to_ttml.
             from backend.lyrics.lyric_match.converters import qrc_xml_to_ttml
 
-            ttml = qrc_xml_to_ttml(lyric_payload.get("_qrc_xml", ""), "qq")
+            ttml = qrc_xml_to_ttml(lyric_payload, "qq")
         else:
             ttml = payload_to_ttml(lyric_payload, lyric_source_suffix)
     except Exception as e:

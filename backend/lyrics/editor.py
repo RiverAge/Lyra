@@ -36,6 +36,11 @@ _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _KEY = "key"
 _BEGIN = "begin"
 _END = "end"
+# 多 div track 的 role 属性值（方案 B：translation/transliteration 作 body 下独立 div）
+_ROLE = "role"
+_ROLE_MAIN = "main"
+_ROLE_TRANSLATION = "translation"
+_ROLE_TRANSLITERATION = "transliteration"
 
 # 时间格式:HH:MM:SS.mmm(对齐 converters._format_ttml_time,含小时,负数→0)
 _TIME_RE = re.compile(
@@ -74,10 +79,17 @@ class Line:
 
 @dataclass
 class LyricDoc:
-    """整份歌词文档:lines 列表 + source(amdl:source 值)。"""
+    """整份歌词文档:lines 列表 + source(amdl:source 值)。
+
+    translation_lines/transliteration_lines 是多 div track 的翻译/注音行
+    （方案 B，遵循 TTML 协议）。编辑器 UI 不编辑这两组，但 round-trip 保留
+    （parse 读、serialize 写回，不丢）。老 sidecar 无这两组时为空 list。
+    """
 
     lines: list[Line] = field(default_factory=list)
     source: str = "netease"
+    translation_lines: list[Line] = field(default_factory=list)
+    transliteration_lines: list[Line] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +200,14 @@ def parse_ttml(xml_text: str) -> LyricDoc:
 
     source = _read_source(root)
     lines = _read_lines(root)
-    return LyricDoc(lines=lines, source=source)
+    translation_lines = _read_aux_lines(root, _ROLE_TRANSLATION)
+    transliteration_lines = _read_aux_lines(root, _ROLE_TRANSLITERATION)
+    return LyricDoc(
+        lines=lines,
+        source=source,
+        translation_lines=translation_lines,
+        transliteration_lines=transliteration_lines,
+    )
 
 
 def _read_source(root: ET.Element) -> str:
@@ -205,14 +224,26 @@ def _read_source(root: ET.Element) -> str:
 
 
 def _read_lines(root: ET.Element) -> list[Line]:
-    """读 body/div/p 列表 → Line 列表。"""
+    """读 body 下无 role（或 role=main）div 的 p 列表 → 主歌词 Line[]。
+
+    多 div track 结构里 translation/transliteration 是独立 div（有 role），
+    不归主 lines（见 parse_ttml 的分流）。
+    """
     lines: list[Line] = []
     body = root.find(_BODY)
     if body is None:
         return lines
-    div = body.find(_DIV)
-    if div is None:
-        return lines
+    for div in body.findall(_DIV):
+        role = div.get(_ROLE, "")
+        if role and role != _ROLE_MAIN:
+            continue  # translation/transliteration div，不归主 lines
+        lines.extend(_read_div_lines(div))
+    return lines
+
+
+def _read_div_lines(div: ET.Element) -> list[Line]:
+    """读单个 div 的 p 列表 → Line[]（逐字 span 或纯文本行，复用主歌词逻辑）。"""
+    lines: list[Line] = []
     for p in div.findall(_P):
         key = p.get(_KEY, "")
         begin_ms = parse_ttml_time(p.get(_BEGIN, ""))
@@ -225,6 +256,58 @@ def _read_lines(root: ET.Element) -> list[Line]:
             lines.append(
                 Line(key=key, begin_ms=begin_ms, end_ms=end_ms, text=text),
             )
+    return lines
+
+
+def _read_aux_lines(root: ET.Element, role: str) -> list[Line]:
+    """读 body 下指定 role 的 div（translation/transliteration）的 p → Line[]。
+
+    多 div track：注音/翻译行也走逐字 span 或纯文本，复用 _read_div_lines。
+    老 metadata `<text for>` 形态 fallback：从 head/metadata 的 translation/
+    transliteration track 读 `<text for="Lx">文本</text>`，包成纯文本 Line。
+    """
+    lines: list[Line] = []
+    body = root.find(_BODY)
+    if body is not None:
+        for div in body.findall(_DIV):
+            if div.get(_ROLE, "") == role:
+                lines.extend(_read_div_lines(div))
+    if lines:
+        return lines
+    # fallback：老 metadata <text for> 形态
+    return _read_metadata_track(root, role)
+
+
+def _read_metadata_track(root: ET.Element, role: str) -> list[Line]:
+    """读 head/metadata 的老式 translation/transliteration track。
+
+    形如 <translation xml:lang="zh-Hans"><text for="L1">文本</text></translation>。
+    逐行纯文本（无 span），按 for 属性取 key，无时间（begin/end 填 0）。仅作兼容
+    老 sidecar 的 fallback——新结构走多 div track。
+    """
+    tag = _ROLE_TRANSLATION if role == _ROLE_TRANSLATION else _ROLE_TRANSLITERATION
+    # metadata track 标签名无命名空间（AppleMusicDecrypt 约定），用局部名匹配
+    head = root.find(_HEAD)
+    if head is None:
+        return []
+    metadata = head.find(_METADATA)
+    if metadata is None:
+        return []
+    track = None
+    for child in metadata:
+        if child.tag.split("}")[-1] == tag:
+            track = child
+            break
+    if track is None:
+        return []
+    lines: list[Line] = []
+    for tx in track:
+        if tx.tag.split("}")[-1] != "text":
+            continue
+        key = tx.get("for", "")
+        text = tx.text or ""
+        if text.strip():
+            lines.append(Line(key=key, begin_ms=0, end_ms=0, text=text))
     return lines
 
 
@@ -270,8 +353,24 @@ def serialize_ttml(doc: LyricDoc) -> str:
     b.append("    </metadata>\n")
     b.append("  </head>\n")
     b.append('  <body xml:lang="und">\n')
-    b.append("    <div>\n")
-    for line in doc.lines:
+    _write_div_lines(b, doc.lines, _ROLE_MAIN, "und")
+    _write_div_lines(b, doc.translation_lines, _ROLE_TRANSLATION, "zh-Hans")
+    _write_div_lines(b, doc.transliteration_lines, _ROLE_TRANSLITERATION, "und-Latn")
+    b.append("  </body>\n")
+    b.append("</tt>\n")
+    return "".join(b)
+
+
+def _write_div_lines(b: list[str], lines: list[Line], role: str, lang: str) -> None:
+    """写一个 <div role=... xml:lang=...> track（多 div track，对齐 converters._write_div_track）。
+
+    每行 Line：有 spans → 逐字 <p key begin end><span begin end>字</span>...</p>；
+    无 spans → 纯文本 <p key begin end>文本</p>。空列表不写 div。
+    """
+    if not lines:
+        return
+    b.append(f'    <div role="{role}" xml:lang="{lang}">\n')
+    for line in lines:
         b.append("      ")
         b.append('<p key="')
         b.append(escape_attr(line.key))
@@ -293,9 +392,6 @@ def serialize_ttml(doc: LyricDoc) -> str:
             b.append(escape_text(line.text))
         b.append("</p>\n")
     b.append("    </div>\n")
-    b.append("  </body>\n")
-    b.append("</tt>\n")
-    return "".join(b)
 
 
 # ---------------------------------------------------------------------------

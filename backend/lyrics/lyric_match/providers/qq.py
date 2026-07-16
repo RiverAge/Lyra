@@ -73,6 +73,7 @@ _JSONP_LEFT = "callback("
 # <content> may carry attributes (type/mime/timetag/filescroll) before CDATA.
 _CONTENT_RE = re.compile(r'<content\b[^>]*><!\[CDATA\[([0-9A-Fa-f]*)\]\]></content>')
 _CONTENTTS_RE = re.compile(r'<contentts\b[^>]*><!\[CDATA\[([0-9A-Fa-f]*)\]\]></contentts>')
+_CONTENTROMA_RE = re.compile(r'<contentroma\b[^>]*><!\[CDATA\[([0-9A-Fa-f]*)\]\]></contentroma>')
 
 # A span in QRC LyricContent looks like "(start,dur)TEXT"; capture the text
 # between a closing ')' and the next '(' (or end). Used to detect the
@@ -211,6 +212,25 @@ class QqProvider(LyricProvider):
             await asyncio.sleep(self.sleep)
         return data
 
+    @staticmethod
+    def _decrypt_aux(raw: str, pattern: re.Pattern, label: str) -> str:
+        """从同响应里抽 contentts/contentroma hex → decrypt_qrc → 返回解密 XML。
+
+        翻译/注音是独立加密 payload，和主 content 同一个 lyric_download 响应里。
+        空 CDATA / 无该标签 / 解密失败 → 返回 ""（翻译/注音可选，不阻塞主歌词）。
+        """
+        m = pattern.search(raw)
+        if not m:
+            return ""
+        hex_str = m.group(1)
+        if not hex_str:
+            return ""
+        try:
+            return decrypt_qrc(hex_str)
+        except Exception:
+            # 翻译/注音解密失败不影响主歌词，静默降级为空
+            return ""
+
     async def search(self, q: TrackQuery, limit: int) -> list[Candidate]:
         # Mirror NetEase's multi-query recall: build_queries yields title+artist
         # +album permutations so a weak single-key query still finds the song.
@@ -269,6 +289,8 @@ class QqProvider(LyricProvider):
             # shape changed. Return a marker so lyric_summary reports it.
             payload: dict[str, Any] = {
                 "_qrc_xml": "",
+                "_qrc_ts_xml": "",
+                "_qrc_roma_xml": "",
                 "_provider_source": "qq",
                 "_qrc_status": "no_content",
             }
@@ -281,6 +303,8 @@ class QqProvider(LyricProvider):
             # Don't cache decrypt errors — allow a retry on the same id later.
             return {
                 "_qrc_xml": "",
+                "_qrc_ts_xml": "",
+                "_qrc_roma_xml": "",
                 "_provider_source": "qq",
                 "_qrc_status": f"decrypt_error: {type(e).__name__}: {e}",
             }
@@ -293,12 +317,18 @@ class QqProvider(LyricProvider):
             # repeat fetch is free.
             payload = {
                 "_qrc_xml": "",
+                "_qrc_ts_xml": "",
+                "_qrc_roma_xml": "",
                 "_provider_source": "qq",
                 "_qrc_status": "placeholder",
             }
             self._qrc_cache[candidate.id] = payload
             return payload
         payload = {"_qrc_xml": qrc_xml, "_provider_source": "qq"}
+        # 同响应里抽翻译(contentts)/注音(contentroma)：独立加密 payload，
+        # 复用 decrypt_qrc。空/失败留空字符串，不阻塞主歌词（翻译/注音是可选）。
+        payload["_qrc_ts_xml"] = self._decrypt_aux(raw, _CONTENTTS_RE, "contentts")
+        payload["_qrc_roma_xml"] = self._decrypt_aux(raw, _CONTENTROMA_RE, "contentroma")
         self._qrc_cache[candidate.id] = payload
         return payload
 

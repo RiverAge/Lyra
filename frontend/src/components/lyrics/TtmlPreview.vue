@@ -1,32 +1,21 @@
 <template>
   <div ref="rootEl" class="ttml-preview rounded-md border border-line-subtle bg-surface">
-    <!-- 头部：行数 + 预览/同步/原始 tab -->
-    <div class="flex items-center justify-between border-b border-line-subtle px-3 py-2">
+    <!-- 头部：行数 + 逐字/逐行 + 注音/翻译标记 -->
+    <div class="flex items-center justify-between gap-2 border-b border-line-subtle px-3 py-2">
       <span class="text-xs text-tertiary">{{ lineCount }} 行</span>
-      <div class="flex gap-0.5">
-        <button
-          class="rounded-sm border-none bg-transparent px-2.5 py-0.5 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-          :class="{ 'bg-accent-subtle text-accent': mode === 'rendered' }"
-          @click="mode = 'rendered'"
-        >
-          预览
-        </button>
-        <button
-          class="rounded-sm border-none bg-transparent px-2.5 py-0.5 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-          :class="{ 'bg-accent-subtle text-accent': mode === 'sync' }"
-          :disabled="!hasTime"
-          :title="hasTime ? '播放时歌词跟随高亮' : '该 TTML 无时间轴'"
-          @click="mode = 'sync'"
-        >
-          同步
-        </button>
-        <button
-          class="rounded-sm border-none bg-transparent px-2.5 py-0.5 text-xs text-secondary transition-colors hover:bg-hover hover:text-primary"
-          :class="{ 'bg-accent-subtle text-accent': mode === 'raw' }"
-          @click="mode = 'raw'"
-        >
-          原始
-        </button>
+      <div v-if="sync.lines.value.length > 0" class="flex items-center gap-1">
+        <span
+          class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium"
+          :class="isCharLevel ? 'bg-accent-subtle text-accent' : 'bg-subtle text-tertiary'"
+        >{{ isCharLevel ? "逐字" : "逐行" }}</span>
+        <span
+          v-if="hasTransliteration"
+          class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary"
+        >注音</span>
+        <span
+          v-if="hasTranslation"
+          class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary"
+        >翻译</span>
       </div>
     </div>
 
@@ -35,74 +24,89 @@
       无内容
     </p>
 
-    <!-- 解析失败（预览/同步视图） -->
-    <p v-else-if="sync.parseError.value && mode !== 'raw'" class="p-3 text-sm text-danger">
-      解析失败：{{ sync.parseError.value }}<span class="ml-1 text-xs text-tertiary">（可切到「原始」查看源码）</span>
+    <!-- 解析失败 -->
+    <p v-else-if="sync.parseError.value" class="p-3 text-sm text-danger">
+      解析失败：{{ sync.parseError.value }}
     </p>
 
-    <!-- 预览视图：逐行纯文本（不高亮） -->
-    <div v-else-if="mode === 'rendered'" class="tp-body max-h-[var(--tp-max-height,320px)] overflow-auto px-3 py-2">
-      <p
-        v-for="(line, idx) in sync.lines.value"
-        :key="idx"
-        class="whitespace-pre-wrap break-words rounded-sm px-2 py-0.5 text-sm leading-normal text-secondary"
-      >
-        {{ line.text }}
-      </p>
-      <p v-if="sync.lines.value.length === 0" class="p-4 text-sm text-tertiary">
-        未提取到歌词行
-      </p>
-    </div>
-
-    <!-- 同步视图：当前行高亮 + 自动滚动 -->
-    <div v-else-if="mode === 'sync'" ref="syncBodyEl" class="tp-body max-h-[var(--tp-max-height,320px)] overflow-auto px-3 py-2">
-      <p
+    <!-- 逐字歌词体 -->
+    <div v-else ref="bodyEl" class="max-h-[var(--tp-max-height,320px)] overflow-auto px-3 py-2">
+      <div
         v-for="(line, idx) in sync.lines.value"
         :key="idx"
         :ref="(el) => setLineRef(el, idx)"
-        class="whitespace-pre-wrap break-words rounded-sm px-2 py-0.5 my-0.5 text-[13px] leading-relaxed text-secondary transition-colors"
-        :class="{ 'inset-bar-active': idx === sync.currentIndex.value }"
+        class="my-0.5 rounded-sm px-2 py-0.5 transition-colors"
+        :class="lineClass(idx, line)"
       >
-        {{ line.text }}
-      </p>
+        <!-- 主歌词 -->
+        <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+          <template v-if="line.spans.length > 0">
+            <span
+              v-for="(sp, si) in line.spans"
+              :key="si"
+              :class="isSpanActive(idx, si) ? 'font-bold text-accent' : 'text-secondary'"
+            >{{ sp.text }}</span>
+          </template>
+          <template v-else>
+            <span :class="idx === sync.currentIndex.value ? 'text-primary' : 'text-secondary'">{{ line.text }}</span>
+          </template>
+        </p>
+        <!-- 注音行（逐字罗马音逐字高亮 / 逐行注音整行） -->
+        <p
+          v-if="line.transliteration && line.transliteration.length > 0"
+          class="whitespace-pre-wrap break-words text-[11px] leading-snug"
+        >
+          <template v-if="line.transliteration.length > 1">
+            <span
+              v-for="(sp, si) in line.transliteration"
+              :key="si"
+              :class="isRomaSpanActive(idx, si) ? 'font-medium text-accent' : 'text-tertiary'"
+            >{{ sp.text }}</span>
+          </template>
+          <template v-else>
+            <span :class="idx === sync.currentIndex.value ? 'text-secondary' : 'text-tertiary'">{{ line.transliteration[0].text }}</span>
+          </template>
+        </p>
+        <!-- 翻译行（整行小字，当前行高亮） -->
+        <p
+          v-if="line.translation"
+          class="whitespace-pre-wrap break-words text-[11px] leading-snug"
+          :class="idx === sync.currentIndex.value ? 'text-secondary' : 'text-tertiary'"
+        >{{ line.translation }}</p>
+      </div>
       <p v-if="sync.lines.value.length === 0" class="p-4 text-sm text-tertiary">
         未提取到歌词行
       </p>
-      <p v-if="!hasTime && sync.lines.value.length > 0" class="p-4 text-sm text-tertiary">
-        该 TTML 无时间轴，无法同步高亮。
-      </p>
     </div>
-
-    <!-- 原始视图：TTML 源码 -->
-    <pre v-else class="max-h-[var(--tp-max-height,320px)] overflow-auto m-0 px-3 py-2 font-mono text-[11px] text-secondary whitespace-pre-wrap break-all leading-relaxed"><code>{{ ttml }}</code></pre>
   </div>
 </template>
 
 <script setup lang="ts">
 /* global Element, HTMLElement */
 import { useLyricSync } from "@/composables/useLyricSync"
+import type { LyricLine } from "@/composables/useLyricSync"
 
 /**
- * TTML 预览组件（预览/同步/原始三视图）
+ * TTML 预览组件（单一逐字同步视图 + 注音/翻译行）
  *
- * - 预览：逐行纯文本（不高亮）
- * - 同步：当前行高亮 + 自动滚到视口中央（需传 currentTimeMs + TTML 有时间轴）
- * - 原始：TTML 源码（pre+code）
+ * 直接展示同步歌词，无 tab 切换：
+ * - 主歌词：逐字行渲染 spans（当前 span 加粗+accent），纯文本行整行高亮
+ * - 注音行：逐字罗马音（QQ）渲染 spans 当前音节加粗 accent；逐行注音（netease）整行
+ * - 翻译行：整行小字，当前行高亮
+ * - 当前行变化 → 自动滚到视口中央
  *
- * 同步引擎复用 useLyricSync（parseTtml 读 begin/end）。
- * rendered/sync 共用 sync.lines（解析一次）。
+ * 同步引擎复用 useLyricSync（parseTtml 读多 div track：main + translation + transliteration）。
  */
 const props = defineProps<{
   ttml: string | null
   /** 预览区最大高度（MatchPanel 右栏主体传 480px） */
   maxHeight?: string
-  /** 当前播放时间（毫秒），同步模式高亮驱动；不传则同步 tab 禁用 */
+  /** 当前播放时间（毫秒），同步高亮驱动；不传则不高亮 */
   currentTimeMs?: number
 }>()
 
-const mode = ref<"rendered" | "sync" | "raw">("rendered")
 const rootEl = ref<HTMLElement | null>(null)
-const syncBodyEl = ref<HTMLElement | null>(null)
+const bodyEl = ref<HTMLElement | null>(null)
 const lineRefs = ref<(Element | null)[]>([])
 
 function setLineRef(el: unknown, idx: number): void {
@@ -116,21 +120,44 @@ const ttmlRef = computed(() => props.ttml)
 const sync = useLyricSync(currentTimeMsRef, ttmlRef)
 
 const lineCount = computed(() => sync.lines.value.length)
-/** TTML 是否含时间轴（任一行有 begin>0 或 end>0） */
-const hasTime = computed(() =>
-  sync.lines.value.some((l) => l.beginMs > 0 || l.endMs > 0),
+
+/** 是否含逐字时间轴（任一行有 spans） */
+const isCharLevel = computed(() =>
+  sync.lines.value.some((l) => l.spans.length > 0),
 )
 
-// 切到 sync 时若该 ttml 无时间轴，回退 rendered
-watch(hasTime, (ht) => {
-  if (!ht && mode.value === "sync") mode.value = "rendered"
-})
+/** 是否有注音行（任一行 transliteration 非空） */
+const hasTransliteration = computed(() =>
+  sync.lines.value.some((l) => l.transliteration && l.transliteration.length > 0),
+)
+
+/** 是否有翻译行（任一行 translation 非空） */
+const hasTranslation = computed(() =>
+  sync.lines.value.some((l) => !!l.translation),
+)
+
+/** 行级 class：当前行 + 纯文本行 → 整行 inset-bar-active；当前行 + 逐字行 → 轻底色；非当前 → 无 */
+function lineClass(idx: number, line: LyricLine): string {
+  if (idx !== sync.currentIndex.value) return ""
+  // 当前行：逐字行轻底色（不抢 span 高亮），纯文本行整行色条高亮
+  return line.spans.length > 0 ? "bg-accent-subtle" : "inset-bar-active"
+}
+
+/** 主歌词 span 是否当前活跃：行匹配 + span 匹配 */
+function isSpanActive(idx: number, si: number): boolean {
+  return idx === sync.currentIndex.value && si === sync.currentSpanIndex.value
+}
+
+/** 注音 span 是否当前活跃：行匹配 + 注音 span 匹配 */
+function isRomaSpanActive(idx: number, si: number): boolean {
+  return idx === sync.currentIndex.value && si === sync.currentTransliterationSpanIndex.value
+}
 
 // 当前行变化 → 滚到视口中央
 watch(
   () => sync.currentIndex.value,
   async (idx) => {
-    if (idx < 0 || mode.value !== "sync") return
+    if (idx < 0) return
     await nextTick()
     const el = lineRefs.value[idx]
     if (el instanceof HTMLElement) {

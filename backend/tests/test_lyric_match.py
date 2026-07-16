@@ -218,25 +218,113 @@ class TestConverters:
             payload_to_ttml({"yrc": {"lyric": ""}, "lrc": {"lyric": ""}}, "netease")
 
     def test_qrc_xml_to_ttml_has_p_and_span_structure(self) -> None:
-        """QQ QRC XML → TTML 含 <p begin= end=> 与 <span begin= end=>。"""
+        """QQ QRC XML → TTML 含 <p begin= end=> 与 <span begin= end=>（多 div track）。"""
         qrc_xml = decrypt_qrc(_QRC_FIXTURE_HEX)
-        ttml = qrc_xml_to_ttml(qrc_xml, "qq")
+        ttml = qrc_xml_to_ttml({"_qrc_xml": qrc_xml}, "qq")
         assert "<p " in ttml
         assert 'begin="' in ttml
         assert 'end="' in ttml
         assert "<span begin=" in ttml
         assert "</span>" in ttml
+        # 多 div track：主歌词在 role="main" div
+        assert 'role="main"' in ttml
 
     def test_qrc_xml_to_ttml_source_is_qq(self) -> None:
         """QQ TTML 的 amdl:source 是 qq。"""
         qrc_xml = decrypt_qrc(_QRC_FIXTURE_HEX)
-        ttml = qrc_xml_to_ttml(qrc_xml, "qq")
+        ttml = qrc_xml_to_ttml({"_qrc_xml": qrc_xml}, "qq")
         assert "<amdl:source>qq</amdl:source>" in ttml
 
     def test_qrc_xml_to_ttml_raises_on_empty(self) -> None:
         """无 LyricContent → ValueError。"""
         with pytest.raises(ValueError, match="no QRC LyricContent"):
-            qrc_xml_to_ttml("<QrcInfos></QrcInfos>", "qq")
+            qrc_xml_to_ttml({"_qrc_xml": "<QrcInfos></QrcInfos>"}, "qq")
+
+    def test_qrc_xml_to_ttml_no_aux_divs_when_payload_empty(self) -> None:
+        """无 contentts/contentroma（payload 缺 _qrc_ts_xml/_qrc_roma_xml）
+        → 不出 translation/transliteration div。
+        """
+        qrc_xml = decrypt_qrc(_QRC_FIXTURE_HEX)
+        ttml = qrc_xml_to_ttml({"_qrc_xml": qrc_xml}, "qq")
+        assert 'role="translation"' not in ttml
+        assert 'role="transliteration"' not in ttml
+
+    def test_qrc_xml_to_ttml_with_roma_aux(self) -> None:
+        """QQ payload 带 _qrc_roma_xml → transliteration div 逐字 span + 按 key 关联主歌词。"""
+        main_qrc = (
+            '<QrcInfos><LyricInfo LyricCount="1">'
+            '<Lyric_1 LyricType="1" LyricContent="[0,2000](0,1000)夢(1000,1000)な">'
+            '</Lyric_1></LyricInfo></QrcInfos>'
+        )
+        # 注音 QRC：逐字罗马音，按 key 关联主歌词 L1（行数相等按下标对齐）
+        roma_qrc = (
+            '<QrcInfos><LyricInfo LyricCount="1">'
+            '<Lyric_1 LyricType="1" LyricContent="[0,2000](0,1000)yu(1000,1000)me">'
+            '</Lyric_1></LyricInfo></QrcInfos>'
+        )
+        ttml = qrc_xml_to_ttml(
+            {"_qrc_xml": main_qrc, "_qrc_ts_xml": "", "_qrc_roma_xml": roma_qrc},
+            "qq",
+        )
+        # transliteration div 存在 + 逐字 span（QQ 逐字注音）
+        assert 'role="transliteration"' in ttml
+        tr_chunk = ttml[ttml.find('role="transliteration"'):]
+        assert "<span begin=" in tr_chunk
+        assert "yu" in tr_chunk
+        assert "me" in tr_chunk
+        # key 关联主歌词 L1
+        assert 'key="L1"' in tr_chunk
+
+    def test_netease_translation_div_line_level(self) -> None:
+        """netease tlyric 逐行翻译 → translation div 纯文本 <p>（无 span），按 key 关联。"""
+        # yrc 逐字 + tlyric 逐行翻译，行数相等按下标对齐
+        payload = {
+            "yrc": {"lyric": "[0,2000](0,1000)夢(1000,1000)な"},
+            "lrc": {"lyric": ""},
+            "tlyric": {"lyric": "[00:00.00]如果梦\n[00:01.00]如果是"},
+            "romalrc": {"lyric": ""},
+        }
+        ttml = payload_to_ttml(payload, "netease")
+        assert 'role="translation"' in ttml
+        tr_chunk = ttml[ttml.find('role="translation"'):]
+        # 逐行：无 span，纯文本 p
+        assert "<span begin=" not in tr_chunk
+        assert "如果梦" in tr_chunk
+        assert 'key="L1"' in tr_chunk
+
+    def test_qrc_style_preserves_leading_word(self) -> None:
+        """QQ QRC 真实形态：行首字在第一个 `(...)` 标记【之前】。
+
+        真实 QQ LyricContent 形如 `[0,39840]字(0,6640)字(6640,6640)...` ——
+        字与 `(...)` 交替且首字在首个 `(...)` 前。旧实现按 netease 语义
+        （`(...)` 标记其后的字）解析会丢掉每行首字。此用例固化修复：
+        首字「张」与尾字「生」都不丢，整行还原完整。
+        """
+        qrc_xml = (
+            '<QrcInfos><LyricInfo LyricCount="1">'
+            '<Lyric_1 LyricType="1" LyricContent='
+            '"[0,39840]张(0,6640)信(6640,6640)哲(13280,6640)生(33200,6640)">'
+            '</Lyric_1></LyricInfo></QrcInfos>'
+        )
+        ttml = qrc_xml_to_ttml({"_qrc_xml": qrc_xml}, "qq")
+        # 整行文本完整：首字「张」与尾字「生」都在
+        assert "张" in ttml
+        assert "信" in ttml
+        assert "哲" in ttml
+        assert "生" in ttml
+        # 4 个字 → 4 个 <span>（无丢字、无空 span）
+        assert ttml.count("<span begin=") == 4
+
+    def test_netease_style_preserves_trailing_word(self) -> None:
+        """网易 yrc 形态：body 以 `(` 开头，尾字在最后 `(...)` 之后。
+
+        确认 netease 语义（`(...)` 标记其后的字）在修复后不变，尾字不丢。
+        """
+        yrc = "[0,1000](0,500)就(500,500)别"
+        ttml = payload_to_ttml({"yrc": {"lyric": yrc}, "lrc": {"lyric": ""}}, "netease")
+        assert "就" in ttml
+        assert "别" in ttml
+        assert ttml.count("<span begin=") == 2
 
 
 # ---------------------------------------------------------------------------

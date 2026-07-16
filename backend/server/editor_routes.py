@@ -66,10 +66,17 @@ class LineModel(BaseModel):
 
 
 class LyricDocModel(BaseModel):
-    """整份 doc 的 JSON 表示(GET 返回 / POST 接收)。"""
+    """整份 doc 的 JSON 表示(GET 返回 / POST 接收)。
+
+    translation_lines/transliteration_lines 是多 div track 的翻译/注音行
+    （方案 B）。编辑器 UI 不编辑这两组，但 round-trip 保留（前端透传，
+    后端 serialize 写回）。老 sidecar 无这两组时为空 list（默认值）。
+    """
 
     lines: list[LineModel]
     source: str = "netease"
+    translation_lines: list[LineModel] = []
+    transliteration_lines: list[LineModel] = []
 
 
 class PatchSpanRequest(BaseModel):
@@ -162,9 +169,9 @@ def _sidecar_path(track_path: Path, library_root: Path, source: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _doc_to_model(doc: LyricDoc) -> LyricDocModel:
-    """LyricDoc → LyricDocModel(JSON 可序列化)。"""
-    line_models = [
+def _lines_to_models(lines: list) -> list[LineModel]:
+    """Line[] → LineModel[]（逐字 span 或纯文本，三组 track 共用）。"""
+    return [
         LineModel(
             key=line.key,
             begin_ms=line.begin_ms,
@@ -175,14 +182,13 @@ def _doc_to_model(doc: LyricDoc) -> LyricDocModel:
             ],
             text=line.text,
         )
-        for line in doc.lines
+        for line in lines
     ]
-    return LyricDocModel(lines=line_models, source=doc.source)
 
 
-def _model_to_doc(model: LyricDocModel) -> LyricDoc:
-    """LyricDocModel → LyricDoc。"""
-    lines = [
+def _models_to_lines(models: list[LineModel]) -> list:
+    """LineModel[] → Line[]（三组 track 共用）。"""
+    return [
         Line(
             key=lm.key,
             begin_ms=lm.begin_ms,
@@ -193,9 +199,28 @@ def _model_to_doc(model: LyricDocModel) -> LyricDoc:
             ],
             text=lm.text,
         )
-        for lm in model.lines
+        for lm in models
     ]
-    return LyricDoc(lines=lines, source=model.source)
+
+
+def _doc_to_model(doc: LyricDoc) -> LyricDocModel:
+    """LyricDoc → LyricDocModel(JSON 可序列化)。三组 track 全带（round-trip 保留）。"""
+    return LyricDocModel(
+        lines=_lines_to_models(doc.lines),
+        source=doc.source,
+        translation_lines=_lines_to_models(doc.translation_lines),
+        transliteration_lines=_lines_to_models(doc.transliteration_lines),
+    )
+
+
+def _model_to_doc(model: LyricDocModel) -> LyricDoc:
+    """LyricDocModel → LyricDoc。三组 track 全带（前端透传的 translation/transliteration 不丢）。"""
+    return LyricDoc(
+        lines=_models_to_lines(model.lines),
+        source=model.source,
+        translation_lines=_models_to_lines(model.translation_lines),
+        transliteration_lines=_models_to_lines(model.transliteration_lines),
+    )
 
 
 # ---------------------------------------------------------------------------

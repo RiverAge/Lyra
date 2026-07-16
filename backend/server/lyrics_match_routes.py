@@ -144,7 +144,8 @@ def _best_ttml(
             qrc_xml = str(best_payload.get("_qrc_xml") or "")
             if not qrc_xml:
                 return None
-            return qrc_xml_to_ttml(qrc_xml, "qq")
+            # 传整个 payload：qrc_xml_to_ttml 内部取主 + contentts(翻译) + contentroma(注音)
+            return qrc_xml_to_ttml(best_payload, "qq")
         # netease（及未来其他 JSON 负载源）
         if not lyric_payload_has_text(best_payload):
             return None
