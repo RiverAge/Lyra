@@ -246,15 +246,19 @@ class TestConverters:
 
     def test_qrc_xml_to_ttml_no_aux_divs_when_payload_empty(self) -> None:
         """无 contentts/contentroma（payload 缺 _qrc_ts_xml/_qrc_roma_xml）
-        → 不出 translation/transliteration div。
+        → 不出 translation/transliteration track。
         """
         qrc_xml = decrypt_qrc(_QRC_FIXTURE_HEX)
         ttml = qrc_xml_to_ttml({"_qrc_xml": qrc_xml}, "qq")
-        assert 'role="translation"' not in ttml
-        assert 'role="transliteration"' not in ttml
+        assert "<translation>" not in ttml
+        assert "<transliteration>" not in ttml
 
     def test_qrc_xml_to_ttml_with_roma_aux(self) -> None:
-        """QQ payload 带 _qrc_roma_xml → transliteration div 逐字 span + 按 key 关联主歌词。"""
+        """QQ payload 带 _qrc_roma_xml → transliteration track 逐字 span + 按 key 关联主歌词。
+
+        Apple 私有结构：head/metadata 下 <transliteration><text for="L1"><span>...
+        navidrome 认元素名 + <text for> 配对，逐字 span 产 cueLine（精度全保留）。
+        """
         main_qrc = (
             '<QrcInfos><LyricInfo LyricCount="1">'
             '<Lyric_1 LyricType="1" LyricContent="[0,2000](0,1000)夢(1000,1000)な">'
@@ -270,17 +274,20 @@ class TestConverters:
             {"_qrc_xml": main_qrc, "_qrc_ts_xml": "", "_qrc_roma_xml": roma_qrc},
             "qq",
         )
-        # transliteration div 存在 + 逐字 span（QQ 逐字注音）
-        assert 'role="transliteration"' in ttml
-        tr_chunk = ttml[ttml.find('role="transliteration"'):]
+        # transliteration track 存在 + 逐字 span（QQ 逐字注音）
+        assert "<transliteration" in ttml
+        tr_start = ttml.find("<transliteration")
+        tr_end = ttml.find("</transliteration>")
+        tr_chunk = ttml[tr_start:tr_end]
+        assert "<text for=" in tr_chunk
         assert "<span begin=" in tr_chunk
         assert "yu" in tr_chunk
         assert "me" in tr_chunk
         # key 关联主歌词 L1
-        assert 'key="L1"' in tr_chunk
+        assert 'for="L1"' in tr_chunk
 
     def test_netease_translation_div_line_level(self) -> None:
-        """netease tlyric 逐行翻译 → translation div 纯文本 <p>（无 span），按 key 关联。"""
+        """netease tlyric 逐行翻译 → translation track 纯文本 <text for>（无 span），按 key 关联。"""
         # yrc 逐字 + tlyric 逐行翻译，行数相等按下标对齐
         payload = {
             "yrc": {"lyric": "[0,2000](0,1000)夢(1000,1000)な"},
@@ -289,12 +296,14 @@ class TestConverters:
             "romalrc": {"lyric": ""},
         }
         ttml = payload_to_ttml(payload, "netease")
-        assert 'role="translation"' in ttml
-        tr_chunk = ttml[ttml.find('role="translation"'):]
-        # 逐行：无 span，纯文本 p
+        assert "<translation" in ttml
+        tr_start = ttml.find("<translation")
+        tr_end = ttml.find("</translation>")
+        tr_chunk = ttml[tr_start:tr_end]
+        # 逐行：无 span，纯文本 <text for>
         assert "<span begin=" not in tr_chunk
         assert "如果梦" in tr_chunk
-        assert 'key="L1"' in tr_chunk
+        assert 'for="L1"' in tr_chunk
 
     def test_qrc_style_preserves_leading_word(self) -> None:
         """QQ QRC 真实形态：行首字在第一个 `(...)` 标记【之前】。

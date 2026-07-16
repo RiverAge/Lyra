@@ -325,6 +325,45 @@ def _write_div_track(b: list, role: str, lang: str, lines: list) -> None:
     b.append("    </div>\n")
 
 
+def _write_metadata_track(b: list, kind: str, lang: str, lines: list) -> None:
+    """在 <head><metadata> 下写一个翻译/注音 track（Apple 私有结构）。
+
+    Apple/AppleMusicDecrypt/navidrome 的事实标准：翻译/注音用 <translation>/
+    <transliteration> 元素名（非 <div role>），内含 <text for="Lx"> 子元素，
+    按 for 配对主歌词 <p key="Lx">。navidrome parseTTML 只认元素名 + <text for>，
+    <div role="translation"> 会被当 main track（role 被当 agent 角色）。
+
+    每行 _TtmlLine：有 spans → 逐字 <text for="Lx"><span begin end>字</span>...</text>；
+    无 spans → 纯文本 <text for="Lx">文本</text>。空列表不写 track。
+    """
+    if not lines:
+        return
+    b.append('      <')
+    b.append(kind)
+    b.append(' xml:lang="')
+    b.append(_escape_attr(lang))
+    b.append('">\n')
+    for line in lines:
+        b.append('        <text for="')
+        b.append(_escape_attr(line.key))
+        b.append('">')
+        if len(line.spans) == 0:
+            b.append(_escape_text(line.text))
+        else:
+            for span in line.spans:
+                b.append('<span begin="')
+                b.append(_format_ttml_time(span.start))
+                b.append('" end="')
+                b.append(_format_ttml_time(span.end))
+                b.append('">')
+                b.append(_escape_text(span.text))
+                b.append("</span>")
+        b.append("</text>\n")
+    b.append("      </")
+    b.append(kind)
+    b.append(">\n")
+
+
 def _build_ttml(
     source: str,
     main: list,
@@ -332,14 +371,19 @@ def _build_ttml(
     pronunciations: list,
     main_lang: str = "und",
 ) -> str:
-    """生成多 div track TTML（遵循 TTML 协议）。
+    """生成 TTML（Apple 私有结构，对齐 navidrome）。
 
-    <body> 下按 role 写多个 <div> track：
-      - role="main" xml:lang=main_lang：主歌词（逐字 span 或逐行纯文本）
-      - role="translation" xml:lang="zh-Hans"：翻译（逐行/逐字，translations _TtmlLine[]）
-      - role="transliteration" xml:lang="und-Latn"：注音/罗马音（逐字/逐行）
-    translations/pronunciations 为带 key 的 _TtmlLine[]（调用方经 _match_to_main_lines
-    匹配过 main 行 key）；空列表不出 div。
+    - main：body 下 <div><p key begin end>（逐字 span 或逐行纯文本）
+    - translation/transliteration：head/metadata 下 <translation>/<transliteration>
+      <text for="Lx"> + 逐字 <span> 或纯文本。navidrome 按元素名识别 kind，按 for↔key
+      配对，翻译/注音行无时间时从 main 行补。
+    - 逐字翻译/注音（QQ contentts/contentroma）：<text for> 内嵌 <span begin end>，
+      navidrome 产逐字 cueLine，精度全保留。
+    - 空 track 不写。translations/pronunciations 为带 key 的 _TtmlLine[]（_match_to_main_lines
+      匹配过 main 行 key）。
+
+    为何不用 <div role="translation">：navidrome 把 role 当 agent 角色（背景人声 x-bg），
+    <div role="translation"> 的 <p> 被当主歌词进 main track，翻译/注音丢失。
     """
     b = []
     b.append('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -347,12 +391,12 @@ def _build_ttml(
     b.append("  <head>\n")
     b.append("    <metadata>\n")
     b.append("      <amdl:source>" + _escape_text(source) + "</amdl:source>\n")
+    _write_metadata_track(b, "translation", "zh-Hans", translations)
+    _write_metadata_track(b, "transliteration", "und-Latn", pronunciations)
     b.append("    </metadata>\n")
     b.append("  </head>\n")
     b.append('  <body xml:lang="und">\n')
     _write_div_track(b, "main", main_lang, main)
-    _write_div_track(b, "translation", "zh-Hans", translations)
-    _write_div_track(b, "transliteration", "und-Latn", pronunciations)
     b.append("  </body>\n")
     b.append("</tt>\n")
     return "".join(b)

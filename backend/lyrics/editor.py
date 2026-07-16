@@ -335,12 +335,16 @@ def _read_spans(p: ET.Element) -> list[Span]:
 
 
 def serialize_ttml(doc: LyricDoc) -> str:
-    """LyricDoc → TTML XML 字符串(格式对齐 converters._build_ttml)。
+    """LyricDoc → TTML XML 字符串(格式对齐 converters._build_ttml，Apple 私有结构)。
 
-    骨架:xml 头 / tt(ns+amdl+xml:lang=und) / head>metadata>amdl:source /
+    骨架:xml 头 / tt(ns+amdl+xml:lang=und) /
+    head>metadata>amdl:source + <translation>/<transliteration><text for> /
     body(xml:lang=und)>div>p[span|文本]。
 
-    p 无 spans 时输出纯文本,有 spans 时输出 span 序列——与 _build_ttml 分支一致。
+    翻译/注音写 head/metadata 下 <translation>/<transliteration> 元素名 +
+    <text for> 子元素(对齐 Apple/navidrome)。navidrome 只认元素名 + <text for>，
+    <div role="translation"> 会被当 main track 丢翻译。main 仍走 body div。
+    p 无 spans 输出纯文本，有 spans 输出 span 序列——与 _build_ttml 分支一致。
     """
     b: list[str] = []
     b.append('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -350,21 +354,21 @@ def serialize_ttml(doc: LyricDoc) -> str:
     b.append("  <head>\n")
     b.append("    <metadata>\n")
     b.append("      <amdl:source>" + escape_text(doc.source) + "</amdl:source>\n")
+    _write_metadata_lines(b, doc.translation_lines, _ROLE_TRANSLATION, "zh-Hans")
+    _write_metadata_lines(b, doc.transliteration_lines, _ROLE_TRANSLITERATION, "und-Latn")
     b.append("    </metadata>\n")
     b.append("  </head>\n")
     b.append('  <body xml:lang="und">\n')
     _write_div_lines(b, doc.lines, _ROLE_MAIN, "und")
-    _write_div_lines(b, doc.translation_lines, _ROLE_TRANSLATION, "zh-Hans")
-    _write_div_lines(b, doc.transliteration_lines, _ROLE_TRANSLITERATION, "und-Latn")
     b.append("  </body>\n")
     b.append("</tt>\n")
     return "".join(b)
 
 
 def _write_div_lines(b: list[str], lines: list[Line], role: str, lang: str) -> None:
-    """写一个 <div role=... xml:lang=...> track（多 div track，对齐 converters._write_div_track）。
+    """写一个 <div role=... xml:lang=...> track（对齐 converters._write_div_track）。
 
-    每行 Line：有 spans → 逐字 <p key begin end><span begin end>字</span>...</p>；
+    仅 main track 用 body div。每行 Line：有 spans → 逐字 <p key begin end><span begin end>字</span>...</p>；
     无 spans → 纯文本 <p key begin end>文本</p>。空列表不写 div。
     """
     if not lines:
@@ -392,6 +396,35 @@ def _write_div_lines(b: list[str], lines: list[Line], role: str, lang: str) -> N
             b.append(escape_text(line.text))
         b.append("</p>\n")
     b.append("    </div>\n")
+
+
+def _write_metadata_lines(b: list[str], lines: list[Line], kind: str, lang: str) -> None:
+    """写 head/metadata 下一个翻译/注音 track（Apple 私有结构，对齐 converters._write_metadata_track）。
+
+    <translation>/<transliteration> 元素名 + <text for="Lx"> 子元素。每行 Line：
+    有 spans → 逐字 <text for><span begin end>字</span>...</text>；
+    无 spans → 纯文本 <text for>文本</text>。空列表不写 track。
+    """
+    if not lines:
+        return
+    b.append(f"      <{kind} xml:lang=\"{lang}\">\n")
+    for line in lines:
+        b.append('        <text for="')
+        b.append(escape_attr(line.key))
+        b.append('">')
+        if line.spans:
+            for span in line.spans:
+                b.append('<span begin="')
+                b.append(format_ttml_time(span.begin_ms))
+                b.append('" end="')
+                b.append(format_ttml_time(span.end_ms))
+                b.append('">')
+                b.append(escape_text(span.text))
+                b.append("</span>")
+        else:
+            b.append(escape_text(line.text))
+        b.append("</text>\n")
+    b.append(f"      </{kind}>\n")
 
 
 # ---------------------------------------------------------------------------

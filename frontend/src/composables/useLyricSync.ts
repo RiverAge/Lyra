@@ -63,14 +63,7 @@ function parseP(p: Element): {
   spans: LyricSpan[]
   key: string
 } {
-  const spanNodes = Array.from(p.getElementsByTagName("span"))
-  const spans: LyricSpan[] = spanNodes
-    .map((s) => ({
-      text: s.textContent?.trim() ?? "",
-      beginMs: parseTtmlTime(s.getAttribute("begin")),
-      endMs: parseTtmlTime(s.getAttribute("end")),
-    }))
-    .filter((s) => s.text)
+  const spans = parseSpans(p)
   return {
     text: p.textContent?.trim() ?? "",
     beginMs: parseTtmlTime(p.getAttribute("begin")),
@@ -78,6 +71,17 @@ function parseP(p: Element): {
     spans,
     key: p.getAttribute("key") ?? "",
   }
+}
+
+/** 读元素内所有 <span begin end> → LyricSpan[]（逐字时间轴）。无文本 span 过滤掉。 */
+function parseSpans(el: Element): LyricSpan[] {
+  return Array.from(el.getElementsByTagName("span"))
+    .map((s) => ({
+      text: s.textContent?.trim() ?? "",
+      beginMs: parseTtmlTime(s.getAttribute("begin")),
+      endMs: parseTtmlTime(s.getAttribute("end")),
+    }))
+    .filter((s) => s.text)
 }
 
 /**
@@ -166,13 +170,21 @@ function readMetadataTracks(
     for (const tx of Array.from(track.children)) {
       if (tx.tagName.toLowerCase() !== "text") continue
       const key = tx.getAttribute("for") ?? ""
-      const text = tx.textContent?.trim() ?? ""
-      if (!key || !text) continue
+      if (!key) continue
       if (role === "translation") {
-        translationByKey.set(key, text)
+        // 翻译：纯文本整行（LyricLine.translation 是 string，不存逐字）
+        const text = tx.textContent?.trim() ?? ""
+        if (text) translationByKey.set(key, text)
       } else {
-        // 逐行注音存成单 span（无时间，整行）
-        transliterationByKey.set(key, [{ text, beginMs: 0, endMs: 0 }])
+        // 注音：优先读 <text for> 内逐字 <span begin end>（QQ contentroma 逐字罗马音）；
+        // 无 span 则纯文本整行存单 span（netease romalrc 逐行，时间 0 由逐字高亮逻辑兜底）
+        const spans = parseSpans(tx)
+        if (spans.length > 0) {
+          transliterationByKey.set(key, spans)
+        } else {
+          const text = tx.textContent?.trim() ?? ""
+          if (text) transliterationByKey.set(key, [{ text, beginMs: 0, endMs: 0 }])
+        }
       }
     }
   }
