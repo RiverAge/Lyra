@@ -18,10 +18,9 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 列表查询字段：列表端点（/api/library）只返回展示必需列，排除 tag_map
-# （可能含内嵌歌词等大 JSON，单首实测几十 KB ~ MB 级，20 首一页可达 100MB+）。
-# tag_map 在单首详情端点（/library/{id} → get_track_by_id SELECT *）返回，
-# 供 MetaTab 元数据聚合按需读取。
+# 列表查询字段：列表端点（/api/library）只返回展示必需列。
+# tracks 表已无 tag_map 列（B 方案：元数据现读文件 via /meta/{id}/tags），
+# 详情端点 /library/{id} 也不再返回 tag_map。
 # 同时排除 mtime/folder_hash/created_at/updated_at（内部字段，前端不用）。
 _TRACK_LIST_COLUMNS = (
     "id, title, artist, album_artist, album, path, track, disc, year, "
@@ -47,7 +46,6 @@ CREATE TABLE IF NOT EXISTS tracks (
     bitrate      INTEGER,
     codec        TEXT,
     samplerate   INTEGER,
-    tag_map      TEXT    NOT NULL DEFAULT '{}',
     mtime        INTEGER NOT NULL DEFAULT 0,
     size         INTEGER NOT NULL DEFAULT 0,
     has_cover    INTEGER NOT NULL DEFAULT 0,
@@ -109,27 +107,17 @@ class IndexStore:
 
     @asynccontextmanager
     async def _connect(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """打开连接 + 设 PRAGMA，统一所有 DB 访问入口。
+        """打开连接 + 设 busy_timeout，统一所有 DB 访问入口。
 
-        - ``busy_timeout=5000``：WAL 下写写仍互斥，多连接（scan_all 逐文件
-          upsert + watcher 增量）抢写锁时，默认 0 会立刻抛
-          ``database is locked`` 而非等待重试。设 5s 让抢锁连接等待释放。
-        - ``cache_size=-65536``：每连接 64MB page cache（负值=KB）。
-          默认仅 2MB，2 万行表 + 4 个索引放不进 → stats 的全表扫每 page
-          读盘。本地内存库实测该 query 仅 17ms，生产 ZFS bind mount 上
-          5s——差 300 倍，瓶颈在磁盘读。每连接给 64MB 让整张表常驻内存。
-          per-op 连接模式下此 cache 每次重建，但配合 mmap_size + OS page
-          cache，热数据基本不落盘。
-        - ``mmap_size=268435456``：256MB mmap 映射 DB 文件，Linux page cache
-          自然跨连接缓存热 page，避免每次连接重新读盘。持久属性。
-
+        WAL 下读不阻塞写、写不阻塞读，但**写写仍互斥**——多连接同时写
+        （scan_all 逐文件 upsert + watcher 增量 upsert）抢写锁时，默认
+        ``busy_timeout=0`` 会立刻抛 ``database is locked`` 而非等待重试。
+        设 5s busy_timeout 让抢锁的连接等待对方释放而非直接报错。
         同时每连接设 row_factory（与原 `async with aiosqlite.connect` 一致）。
         """
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             await db.execute("PRAGMA busy_timeout=5000")
-            await db.execute("PRAGMA cache_size=-65536")
-            await db.execute("PRAGMA mmap_size=268435456")
             yield db
 
     # ---- schema ----
@@ -338,7 +326,7 @@ class IndexStore:
             limit: 返回条数上限，默认 10（搜索框下拉只需几条）。
 
         Returns:
-            sqlite3.Row 列表（列表列集，无 tag_map），按 id 升序。
+            sqlite3.Row 列表（列表列集），按 id 升序。
         """
         import time
 
@@ -479,11 +467,11 @@ class IndexStore:
     # 固定列而非每行动态列：批量 INSERT...VALUES 多行需要所有行列数一致，
     # 取并集会让 SQL 静态可预编译，executemany 一次提交一个事务。
     # 缺失的可空列（track/disc/year/bitrate/samplerate）填 None（列允许 NULL）；
-    # NOT NULL DEFAULT 列由 scanner 保证提供（title/.../duration/tag_map/size/has_cover）。
+    # NOT NULL DEFAULT 列由 scanner 保证提供（title/.../duration/size/has_cover）。
     _BATCH_COLUMNS = (
         "title", "artist", "album_artist", "album", "path",
         "track", "disc", "year", "duration", "bitrate", "codec", "samplerate",
-        "tag_map", "mtime", "size", "has_cover", "created_at", "updated_at",
+        "mtime", "size", "has_cover", "created_at", "updated_at",
     )
 
     async def upsert_tracks_batch(self, rows: list[dict]) -> int:

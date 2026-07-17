@@ -5,6 +5,7 @@ import { http } from "@/apis/http"
  *
  * 后端契约（所有路径前缀 /api，由 http.ts baseURL 配置）：
  * - GET  /meta/fields                          → dict[str, object] 字段映射清单
+ * - GET  /meta/{track_id}/tags                 → TrackTagsResponse（现读文件 tag_map，B 方案）
  * - GET  /meta/{track_id}/apple?storefront&lang → AppleResponse
  * - GET  /meta/{track_id}/credits?storefront    → CreditsResponse
  * - POST /meta/{track_id}/diff                  → DiffResponse
@@ -89,6 +90,15 @@ export interface FieldMapResponse {
   fields: FieldInfo[]
 }
 
+/** /meta/{id}/tags 返回：现读文件的 tag_map（mutagen key → list[str]）。 */
+export interface TrackTagsResponse {
+  track_id: string
+  /** mutagen 原生 key → 值列表（白名单过滤，不含 covr 等二进制） */
+  tag_map: Record<string, unknown>
+  /** 推断的 codec：alac | flac | mp3 | null */
+  codec: string | null
+}
+
 /**
  * 从 axios 错误对象抽取后端错误信息。
  * FastAPI HTTPException 响应体形如 {detail: string} 或 {detail: [{msg: ...}]}。
@@ -118,6 +128,11 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
 /** 拉取支持的字段映射清单（语义字段名 → 各容器 mutagen key）。 */
 export async function fetchFields(): Promise<FieldMapResponse> {
   return http.get<FieldMapResponse>("/meta/fields").then((res) => res.data)
+}
+
+/** 现读音频文件的 tag_map（B 方案：不入库，详情页 MetaTab 按需读）。 */
+export async function fetchTrackTags(trackId: string): Promise<TrackTagsResponse> {
+  return http.get<TrackTagsResponse>(`/meta/${trackId}/tags`).then((res) => res.data)
 }
 
 /** 拉取 Apple WebAPI 权威元数据 */

@@ -209,7 +209,8 @@ async function loadTrack(): Promise<void> {
   }
 }
 
-/** 元数据写入成功：重新拉 track 刷新 tag_map（当前标签/统一字段表的当前值列更新） */
+/** 元数据写入成功：重新拉 track 刷新基础列（title/artist 等可能被写改；
+ * tag_map 不再入库，MetaTab 自行 reload 现读文件） */
 function onMetaWritten(): void {
   void loadTrack()
 }

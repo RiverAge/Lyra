@@ -173,6 +173,7 @@
 import BaseButton from "@/components/ui/BaseButton.vue"
 import BaseInput from "@/components/ui/BaseInput.vue"
 import { useMetaStore } from "@/stores/meta"
+import { fetchTrackTags } from "@/apis/meta"
 import type { AuthoritativeFields } from "@/apis/meta"
 import type { TrackItem } from "@/apis/library"
 
@@ -193,7 +194,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** 写入成功，通知父组件刷新 track.tag_map */
+  /** 写入成功，通知父组件（父可刷新 track 基础列；tag_map 不再入库，本组件自行 reload） */
   (e: "written"): void
 }>()
 
@@ -217,6 +218,11 @@ const storefront = ref("us")
 const lang = ref("zh-Hans")
 const selected = ref<string[]>([])
 const showConfirm = ref(false)
+
+// 现读的 tag_map（B 方案：不入库，调 /meta/{id}/tags 拿）。
+// 文本 tag 经白名单过滤，不含 covr 等二进制。加载失败为空 {}（表显空）。
+const tagMap = ref<Record<string, unknown>>({})
+const tagMapLoading = ref(false)
 
 // ---------- 语义字段反向映射 ----------
 
@@ -252,21 +258,27 @@ const mutagenToSemantic = computed<Record<string, string>>(() => {
 /** 是否已拉取过权威值（决定权威列显示"未拉取"还是"—"） */
 const hasFetched = computed(() => Object.keys(fieldStatusMap.value).length > 0)
 
-// ---------- tag_map 解析 ----------
+// ---------- tag_map（现读 /meta/{id}/tags） ----------
 
-/** 解析 track.tag_map（JSON 字符串或 object）为 Record */
-function parseTagMap(): Record<string, unknown> | null {
-  const raw = (props.track as { tag_map?: unknown } | null)?.tag_map
-  if (!raw) return null
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw) as Record<string, unknown>
-    } catch {
-      return null
-    }
+/** 异步加载当前 track 的 tag_map（现读文件，B 方案不入库） */
+async function loadTagMap(): Promise<void> {
+  if (!props.trackId) return
+  tagMapLoading.value = true
+  try {
+    const res = await fetchTrackTags(props.trackId)
+    tagMap.value = (res.tag_map && typeof res.tag_map === "object")
+      ? res.tag_map as Record<string, unknown>
+      : {}
+  } catch {
+    tagMap.value = {}
+  } finally {
+    tagMapLoading.value = false
   }
-  if (raw && typeof raw === "object") return raw as Record<string, unknown>
-  return null
+}
+
+/** 当前 tag_map（现读缓存，供 unifiedRows / otherLocalRows 取值） */
+function parseTagMap(): Record<string, unknown> {
+  return tagMap.value
 }
 
 /** 二进制/非文本 tag key（封面/编码工具，不当文本展示） */
@@ -470,7 +482,8 @@ async function onWrite(): Promise<void> {
   if (res) {
     showConfirm.value = false
     emit("written")
-    // 写入后刷新 diff，让 before 对齐新值
+    // 写入后重新现读 tag_map（文件已改）+ 刷新 diff，让 before 对齐新值
+    await loadTagMap()
     await store.loadDiff(props.trackId, mergedFields.value)
   }
 }
@@ -478,7 +491,7 @@ async function onWrite(): Promise<void> {
 // 勾选变化时清空 diff（防旧 diff 与新勾选不一致）
 watch(selected, () => store.clearDiff(), { deep: true })
 
-// 切换 track 重置
+// 切换 track 重置 + 重载 tag_map
 watch(
   () => props.trackId,
   (next, prev) => {
@@ -486,13 +499,16 @@ watch(
       store.reset("all")
       selected.value = []
       showConfirm.value = false
+      tagMap.value = {}
+      void loadTagMap()
     }
   },
 )
 
-// 进页拉取字段映射（构建反向映射；失败降级）
+// 进页拉取字段映射（构建反向映射；失败降级）+ 现读 tag_map
 onMounted(async () => {
   await store.loadFieldMap()
+  await loadTagMap()
 })
 </script>
 

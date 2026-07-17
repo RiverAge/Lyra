@@ -71,7 +71,6 @@ async def test_library_with_track(store: IndexStore, client: AsyncClient) -> Non
         bitrate=256000,
         codec="alac",
         samplerate=44100,
-        tag_map='{"©nam":"Test Song"}',
         mtime=1750000000000,
         size=25000000,
         has_cover=1,
@@ -135,7 +134,6 @@ async def test_library_search_matches(store: IndexStore, client: AsyncClient) ->
         track=1,
         duration=240000,
         codec="alac",
-        tag_map='{}',
         mtime=1750000000000,
         size=1000,
         has_cover=1,
@@ -151,7 +149,6 @@ async def test_library_search_matches(store: IndexStore, client: AsyncClient) ->
         track=1,
         duration=200000,
         codec="alac",
-        tag_map='{}',
         mtime=1750000000000,
         size=1000,
         has_cover=1,
@@ -193,7 +190,6 @@ async def test_library_search_before_track_id_route(
         track=1,
         duration=100000,
         codec="alac",
-        tag_map='{}',
         mtime=1750000000000,
         size=1000,
         has_cover=0,
@@ -288,7 +284,6 @@ async def _insert_sample_track(store: IndexStore, *, path: str, rowid_offset: in
         bitrate=256000,
         codec="alac",
         samplerate=44100,
-        tag_map='{"©nam":"Test Song"}',
         mtime=1750000000000,
         size=25000000,
         has_cover=1,
@@ -316,8 +311,8 @@ async def test_get_track_by_id_ok(store: IndexStore, client: AsyncClient) -> Non
     assert item["path"] == "/music/apple/Artist/Album/01 Test.m4a"
     assert item["duration"] == 240000
     assert item["codec"] == "alac"
-    # 单首详情端点保留 tag_map（MetaTab 元数据聚合需要），与列表端点区分。
-    assert item["tag_map"] == '{"©nam":"Test Song"}'
+    # B 方案：详情端点不返回 tag_map（不入库，MetaTab 现读 /meta/{id}/tags）
+    assert "tag_map" not in item
 
 
 async def test_get_track_by_id_not_found(client: AsyncClient) -> None:

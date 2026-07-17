@@ -519,18 +519,17 @@ async def test_scan_all_recursive_multi_level(
     count = await store.count_tracks()
     assert count > 0
 
-    # 验证入库记录的 tag_map 包含 cpil（证明 _read_audio_tags 未崩溃）
-    # list_tracks 是列表 API 专用 SELECT（排除 tag_map 等大字段），
-    # 验证 tag_map 用 get_track_by_id（SELECT * 含全字段）。
+    # 验证入库记录无 tag_map 列（B 方案：不入库，详情页现读文件）。
+    # get_track_by_id 是 SELECT *，B 方案后 tracks 表无 tag_map 列。
     rows = await store.list_tracks(limit=10, offset=0)
     assert len(rows) > 0
     full_row = await store.get_track_by_id(rows[0]["id"])
     assert full_row is not None
-    tag_map_str = full_row["tag_map"]
-    assert "cpil" in tag_map_str, (
-        f"tag_map should contain 'cpil' key (P1-2 regression), "
-        f"got: {tag_map_str[:200]}"
+    assert "tag_map" not in full_row.keys(), (
+        f"tracks should NOT have tag_map column (B 方案), got keys: {list(full_row.keys())}"
     )
+    # 基础字段正确入库
+    assert "title" in full_row.keys(), "tracks should have title column"
 
 
 async def test_scan_all_ignores_dot_dirs_recursively(
@@ -603,11 +602,12 @@ def _make_minimal_m4a(path: str) -> None:
 
 
 async def test_read_audio_tags_mp4_scalar_cpil(store: IndexStore, tmp_path: Path) -> None:
-    """_read_audio_tags 对 MP4 cpil(bool) 标量不崩溃，正确序列化入库。
+    """_read_audio_tags 对 MP4 标量值（cpil bool）不崩溃，正确提取基础字段。
 
-    用真实 Navidrome fixture（含 cpil=True），验证：
-    1. 函数不抛 TypeError
-    2. tag_map JSON 含 "cpil"
+    B 方案后 scanner 不再收集 tag_map（详情页现读文件），本测试验证：
+    1. 函数对标量值（bool）不抛 TypeError
+    2. 基础字段（©nam → title）正确提取
+    3. tag_map 不在返回 dict（B 方案：不入库）
     """
     from backend.index.scanner import _read_audio_tags
 
@@ -629,24 +629,23 @@ async def test_read_audio_tags_mp4_scalar_cpil(store: IndexStore, tmp_path: Path
     result = _read_audio_tags(src)
 
     assert result is not None, "_read_audio_tags should not return None for valid MP4"
-    tag_map_str: str = result["tag_map"]  # type: ignore[assignment]
-    assert "cpil" in tag_map_str, (
-        f"tag_map should contain 'cpil' even though it's a scalar bool, "
-        f"got: {tag_map_str[:300]}"
+    # 基础字段正确提取（真实 fixture 的 ©nam="Title"，mock 分支为 "Mock"）
+    assert result["title"], f"title should be non-empty, got: {result.get('title')!r}"
+    # B 方案：不再返回 tag_map
+    assert "tag_map" not in result, (
+        f"scanner should NOT return tag_map (B 方案不入库), got keys: {list(result.keys())}"
     )
-    # 验证不崩溃的关键：cpil 的值被正确转为字符串
-    assert "True" in tag_map_str or "true" in tag_map_str
 
 
 async def test_read_audio_tags_mp3_txxx_clean_text(store: IndexStore, tmp_path: Path) -> None:
-    """_read_audio_tags 对 MP3 TXXX 帧返回干净文本，不存对象 repr。
+    """read_tag_map 对 MP3 TXXX 帧返回干净文本，不存对象 repr。
 
-    复制真实 MP3 fixture，写入已知内容的 TXXX 帧，验证 text 被提取而非 repr。
-    使用真实 MP3 文件确保 mutagen 能正确识别格式，仅 TXXX 内容为测试构造。
+    B 方案后 tag_map 现读走 writer.read_tag_map（scanner 不再收集）。
+    本测试验证 read_tag_map 的 TXXX：text 被提取而非 repr + 白名单过滤。
     """
     from mutagen.id3 import ID3, TXXX
 
-    from backend.index.scanner import _read_audio_tags
+    from backend.meta.writer import read_tag_map
 
     # 复制真实 MP3 fixture
     src = Path(
@@ -662,21 +661,24 @@ async def test_read_audio_tags_mp3_txxx_clean_text(store: IndexStore, tmp_path: 
             f.write(b"ID3\x03\x00\x00\x00\x00\x00\x00")
             f.write(b"\xff\xfb\x90\x00" + b"\x00" * 417)
 
-    # 写已知内容的 TXXX 帧
+    # 写已知内容的 TXXX 帧（用白名单内的 desc=LYRICIST，对应 FIELD_MAP）
     tags = ID3(str(dst))
-    tags.add(TXXX(encoding=3, desc="TestKey", text=["Value1", "Value2"]))
+    tags.add(TXXX(encoding=3, desc="LYRICIST", text=["Value1", "Value2"]))
     tags.save()
 
-    result = _read_audio_tags(dst)
+    tag_map, codec = read_tag_map(dst)
 
-    assert result is not None, "_read_audio_tags should not return None for valid MP3"
-    tag_map_str: str = result["tag_map"]  # type: ignore[assignment]
-    # 应该包含干净的 text 值，而非对象 repr（如 <TXXX...>）
-    assert "Value1" in tag_map_str, (
-        f"tag_map should contain clean TXXX text 'Value1', got: {tag_map_str[:300]}"
+    assert codec == "mp3", f"codec should be mp3, got: {codec}"
+    # 白名单内 TXXX:LYRICIST 应被收集，text 干净（非对象 repr）
+    lyricist_key = "TXXX:LYRICIST"
+    assert lyricist_key in tag_map, (
+        f"tag_map should contain '{lyricist_key}', got keys: {list(tag_map.keys())}"
     )
-    assert "Value2" in tag_map_str
+    assert tag_map[lyricist_key] == ["Value1", "Value2"], (
+        f"lyricist should be ['Value1','Value2'], got: {tag_map.get(lyricist_key)}"
+    )
     # 不应该含对象 repr
+    tag_map_str = str(tag_map)
     assert "<TXXX" not in tag_map_str, (
         f"tag_map should NOT contain raw repr, got: {tag_map_str[:300]}"
     )
@@ -849,7 +851,6 @@ def _sample_row(path: str, *, title: str = "T", artist: str = "A") -> dict:
         "bitrate": 256000,
         "codec": "alac",
         "samplerate": 44100,
-        "tag_map": "{}",
         "mtime": 1750000000000,
         "size": 1000,
         "has_cover": 1,
@@ -900,7 +901,7 @@ async def test_upsert_tracks_batch_missing_nullable_cols(store: IndexStore) -> N
     rows = [{
         "title": "T", "artist": "A", "album_artist": "A", "album": "Al",
         "path": "/music/batch/partial.m4a", "duration": 100000,
-        "codec": "flac", "tag_map": "{}", "mtime": 1750000000000,
+        "codec": "flac", "mtime": 1750000000000,
         "size": 500, "has_cover": 0,
         "created_at": 1750000000000, "updated_at": 1750000000000,
     }]

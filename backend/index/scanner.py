@@ -60,23 +60,6 @@ def _should_ignore_path_part(name: str) -> bool:
     return False
 
 
-def _normalize_tag_values(raw_values: list[object]) -> list[str]:
-    """将 mutagen tag 值列表转为字符串列表。
-
-    处理 bytes（UTF-8 解码）、MP4FreeForm、及其他标量类型。
-    """
-    result: list[str] = []
-    for v in raw_values:
-        if isinstance(v, bytes):
-            try:
-                result.append(v.decode("utf-8", errors="replace"))
-            except Exception:
-                result.append(repr(v))
-        else:
-            result.append(str(v))
-    return result
-
-
 def _is_audio_file(path: Path) -> bool:
     """判断是否为支持的音频文件。"""
     return path.suffix.lower() in DEFAULT_EXTENSIONS
@@ -111,7 +94,7 @@ def _read_audio_tags(file_path: Path) -> dict[str, object] | None:
 
     Returns:
         dict 含 title/artist/album_artist/album/track/disc/year/
-        duration/bitrate/codec/samplerate/tag_map/has_cover/mtime/size/path，
+        duration/bitrate/codec/samplerate/has_cover/mtime/size/path，
         或 None（文件无法读取/损坏）。
     """
     import mutagen
@@ -152,41 +135,6 @@ def _read_audio_tags(file_path: Path) -> dict[str, object] | None:
         tags["codec"] = "mp3"
     else:
         tags["codec"] = None
-
-    # ---- 原始 tag map ----
-    raw_tags: dict[str, list[str]] = {}
-
-    if isinstance(mf, MP4):
-        for key in mf:
-            raw_values = mf[key]
-            # 健壮处理标量值（cpil bool / tmpo int / pgap int 等）——
-            # mutagen 对非列表 tag 直接存标量，for 循环迭代会抛 TypeError
-            if not isinstance(raw_values, list):
-                raw_values = [raw_values]
-            raw_tags[key] = _normalize_tag_values(raw_values)
-    elif isinstance(mf, FLAC):
-        for key in mf:
-            raw_tags[key] = [str(v) for v in mf[key]]
-    elif isinstance(mf, MP3):
-        for key in mf:
-            values = mf[key]
-            try:
-                # 大多数 ID3 帧都是 list[Frame]，也有单个 Frame 的情况
-                items = values if isinstance(values, list) else [values]
-                raw_strs: list[str] = []
-                for item in items:
-                    # 优先取 .text（TIT2/TPE1/TALB 等标准文本帧）
-                    text = getattr(item, "text", None)
-                    if text is not None:
-                        if isinstance(text, list):
-                            raw_strs.extend(str(t) for t in text)
-                        else:
-                            raw_strs.append(str(text))
-                    else:
-                        raw_strs.append(str(item))
-                raw_tags[key] = raw_strs
-            except Exception:
-                raw_tags[key] = [str(values)]
 
     # ---- 提取常用字段 ----
     def _first(values: object) -> str:
@@ -242,8 +190,6 @@ def _read_audio_tags(file_path: Path) -> dict[str, object] | None:
             except (ValueError, IndexError):
                 tags["year"] = None
         tags["has_cover"] = 1 if any(k.startswith("APIC:") for k in mf) else 0
-
-    tags["tag_map"] = json.dumps(raw_tags, ensure_ascii=False)
 
     # ---- 文件系统字段 ----
     try:

@@ -349,7 +349,6 @@ async def _prepare_track(
         path=str(audio).replace("\\", "/"),
         codec="alac",
         duration=200000,
-        tag_map='{"cnID": ["1234567890"]}',
     )
 
 

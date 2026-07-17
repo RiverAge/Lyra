@@ -11,6 +11,7 @@ vite.config.ts 的 proxy /api → :8000 解耦前后端。
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -43,6 +44,13 @@ configure_logging(_settings)
 
 # 模块级 logger
 logger = logging.getLogger("lyra")
+
+# 启动 initial_scan 的冷却时间：距上次扫完未满此值则跳过启动扫描。
+# 原因：每次 git pull/重启都重扫 2 万文件 stat + folder hash 计算，即使全
+# hash 命中也要 190s（ZFS bind mount stat 慢）。但启动 = 不可能在扫，上次
+# 扫完未满 5 分钟说明数据是新的，没必要重扫——watcher 增量扫会捡漏。
+# 手动触发（POST /scanner/trigger）不受此冷却影响（用户显式要扫）。
+_INITIAL_SCAN_COOLDOWN_MS = 5 * 60 * 1000  # 5 分钟
 
 # ---------------------------------------------------------------------------
 # lifespan（替代 deprecated @app.on_event）
@@ -216,8 +224,23 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
     """首次启动异步全量扫描。
 
     不阻塞 startup——扫描在后台执行，进度通过 SSE 推送。
+
+    冷却：若距上次扫完未满 ``_INITIAL_SCAN_COOLDOWN_MS``，跳过本次启动扫描
+    （数据是新的，watcher 增量扫会捡漏）。首次启动（无 last_scanned_at）
+    不跳过。手动 trigger 不走这里，不受冷却影响。
     """
     try:
+        status = await scanner._store.get_scanner_status()
+        last = status["last_scanned_at"] if status else None
+        if last:
+            elapsed = int(datetime.now(UTC).timestamp() * 1000) - last
+            if elapsed < _INITIAL_SCAN_COOLDOWN_MS:
+                logger.info(
+                    "上次扫描距今 %.1f 分钟（< %d 分钟冷却），跳过 initial_scan",
+                    elapsed / 60000,
+                    _INITIAL_SCAN_COOLDOWN_MS / 60000,
+                )
+                return
         logger.info("Starting initial scan of library...")
         result = await scanner.scan_all()
         await progress.broadcast_scan_complete(

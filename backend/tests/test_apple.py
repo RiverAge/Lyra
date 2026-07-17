@@ -528,14 +528,18 @@ class TestAppleRoute:
         fake_file = tmp_path / "test.m4a"
         fake_file.write_bytes(b"\x00" * 100)
 
-        # 插入 track，tag_map 含 cnID
+        # 插入 track（B 方案：tag_map 不入库，下方 mock 现读 read_tag_map）
         rowid = await store.insert_track(
             title="Test",
             artist="Artist",
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"cnID": ["1234567890"]}',
+        )
+        _apple_tag_map = {"cnID": ["1234567890"]}
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         # mock get_song_info
@@ -582,7 +586,11 @@ class TestAppleRoute:
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"----:com.apple.iTunes:songId": ["9876543210"]}',
+        )
+        _apple_tag_map = {"----:com.apple.iTunes:songId": ["9876543210"]}
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         mock_fields: dict[str, list[str]] = {"title": ["Song"]}
@@ -616,7 +624,11 @@ class TestAppleRoute:
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"©nam": ["Title"]}',
+        )
+        _apple_tag_map = {"©nam": ["Title"]}  # 无 cnID/songId
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         resp = await client.get(f"/api/meta/{rowid}/apple")
@@ -672,7 +684,11 @@ class TestAppleRoute:
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"cnID": ["1234567890"]}',
+        )
+        _apple_tag_map = {"cnID": ["1234567890"]}
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         with patch(
@@ -703,7 +719,11 @@ class TestAppleRoute:
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"cnID": ["1234567890"]}',
+        )
+        _apple_tag_map = {"cnID": ["1234567890"]}
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         with patch(
@@ -752,7 +772,6 @@ class TestAppleRoute:
             path=str(tmp_path / "nonexistent.m4a").replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"cnID": ["1234567890"]}',
         )
 
         resp = await client.get(f"/api/meta/{rowid}/apple")
@@ -777,7 +796,11 @@ class TestAppleRoute:
             path=str(fake_file).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map='{"cnID": ["1234567890"]}',
+        )
+        _apple_tag_map = {"cnID": ["1234567890"]}
+        import backend.server.apple_routes as _apple_mod
+        monkeypatch.setattr(
+            _apple_mod, "read_tag_map", lambda p: (_apple_tag_map, "alac"),
         )
 
         mock_fields: dict[str, list[str]] = {"title": ["JP Title"]}

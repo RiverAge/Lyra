@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from backend.config import get_settings
 from backend.index.store import get_store
 from backend.meta.credits import get_credits
 from backend.meta.song_id import extract_song_id
+from backend.meta.writer import read_tag_map
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ async def _resolve_track(track_id: str) -> tuple[Path, dict[str, object]]:
 async def credits_fetch(track_id: str, storefront: str = "us") -> dict[str, object]:
     """获取制作人员权威值。
 
-    从 track 的 tag_map 读取 Apple Music Song ID，
+    现读文件 tag_map 提取 Apple Music Song ID（B 方案：不入库），
     爬取 Apple Music 网页版制作人员信息，
     按 role_map.toml 映射为 authoritative_fields。
 
@@ -87,15 +87,12 @@ async def credits_fetch(track_id: str, storefront: str = "us") -> dict[str, obje
         - 404: track 不存在
         - 503: 全 region 失败 / store 未初始化
     """
-    _, row = await _resolve_track(track_id)
+    track_path, _ = await _resolve_track(track_id)
 
-    # 解析 tag_map（与 apple_routes 对齐：无效 JSON / 非 dict → 空 dict）
-    tag_map_str: str = str(row.get("tag_map") or "{}")
+    # 现读文件 tag_map（B 方案：不入库，与 apple_routes 对齐）
     try:
-        tag_map = json.loads(tag_map_str)
-    except (json.JSONDecodeError, TypeError):
-        tag_map = {}
-    if not isinstance(tag_map, dict):
+        tag_map, _codec = read_tag_map(track_path)
+    except (ValueError, Exception):
         tag_map = {}
 
     # 提取 song_id（收敛口径：cnID → freeform songId → 大小写不敏感兜底）

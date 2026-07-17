@@ -21,18 +21,10 @@
     <!-- 扫描进度（自带 card，scanning 时展开） -->
     <ScanProgress v-if="showScanner" class="mb-6" />
 
-    <!-- 筛选工具条 + 右侧操作一行 -->
+    <!-- 操作工具条 -->
     <div class="toolbar-row">
-      <FilterBar
-        class="flex-1"
-        :filters="libraryStore.filters"
-        :has-filters="libraryStore.hasFilters"
-        @set-filter="onSetFilter"
-        @clear-filters="onClearFilters"
-      />
-      <div class="flex items-center gap-2 pb-3.5">
-        <BaseButton variant="ghost" size="sm" icon="RefreshCw" icon-only title="刷新" @click="reload" />
-      </div>
+      <div class="flex-1" />
+      <BaseButton variant="ghost" size="sm" icon="RefreshCw" icon-only title="刷新" @click="reload" />
     </div>
 
     <!-- 表格 -->
@@ -42,7 +34,6 @@
       :error="libraryStore.error"
       :page="libraryStore.page"
       :page-size="libraryStore.limit"
-      :has-filters="libraryStore.hasFilters"
       @navigate="onNavigate"
       @retry="reload"
     />
@@ -70,20 +61,18 @@
 
 <script setup lang="ts">
 import { useLibraryStore } from "@/stores/library"
-import type { LibraryFilters } from "@/stores/library"
 import { useScannerStore } from "@/stores/scanner"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import StatsCards from "@/components/library/StatsCards.vue"
-import FilterBar from "@/components/library/FilterBar.vue"
 import TrackTable from "@/components/library/TrackTable.vue"
 import ScanProgress from "@/components/scanner/ScanProgress.vue"
 
 /**
  * 曲库首页（B 布局重写）
  *
- * 布局自上而下：页头 → 统计卡 → 扫描进度 → 筛选条 → 表格 → 分页
+ * 布局自上而下：页头 → 统计卡 → 扫描进度 → 工具条(刷新) → 表格 → 分页
  * - onMounted：loadPage(1) + loadStats()（统计与列表独立加载）
- * - 筛选：FilterBar → store.setFilter（自动回第 1 页）
+ * - 全局搜索走 ⌘K SearchModal（App.vue 挂载），列表只做分页浏览
  * - 点击表格行 → /track/:id
  */
 
@@ -135,14 +124,6 @@ function onNavigate(id: string): void {
 
 async function reload(): Promise<void> {
   await libraryStore.reload()
-}
-
-function onSetFilter(key: keyof LibraryFilters, value: string): void {
-  void libraryStore.setFilter(key, value)
-}
-
-function onClearFilters(): void {
-  void libraryStore.clearFilters()
 }
 </script>
 

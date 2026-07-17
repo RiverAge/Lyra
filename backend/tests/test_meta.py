@@ -282,7 +282,11 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 def prepare_track(tmp_path: Path) -> dict[str, object]:
-    """在 tmp_path 复制 test.m4a 并返回插入 store 所需的字段。"""
+    """在 tmp_path 复制 test.m4a 并返回插入 store 所需的字段。
+
+    B 方案：tag_map 不入库（diff 端点现读文件 via read_tag_map），
+    测试若需固定 tag_map 内容，monkeypatch read_tag_map 返回固定 dict。
+    """
     src = _FIXTURE_DIR / "test.m4a"
     dst = tmp_path / "test.m4a"
     shutil.copy2(src, dst)
@@ -293,7 +297,6 @@ def prepare_track(tmp_path: Path) -> dict[str, object]:
         "codec": "alac",
         "duration": 200000,
         "size": dst.stat().st_size,
-        "tag_map": '{"©nam": ["Title"], "©ART": ["Artist"]}',
     }
 
 
@@ -339,6 +342,12 @@ class TestMetaDiffRoute:
         """正常 diff 请求返回 before/after 结构。"""
         monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
         rowid = await store.insert_track(**prepare_track)  # type: ignore[arg-type]
+        # B 方案：diff 端点现读文件；mock read_tag_map 返回固定 tag_map
+        import backend.server.meta_routes as _meta_mod
+        _fake_tag_map = {"©nam": ["Title"], "©ART": ["Artist"]}
+        monkeypatch.setattr(
+            _meta_mod, "read_tag_map", lambda p: (_fake_tag_map, "alac"),
+        )
 
         resp = await client.post(
             f"/api/meta/{rowid}/diff",

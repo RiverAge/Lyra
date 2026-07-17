@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -17,6 +16,7 @@ from backend.config import get_settings
 from backend.index.store import get_store
 from backend.meta.apple import AppleAPIError, get_song_info
 from backend.meta.song_id import extract_song_id
+from backend.meta.writer import read_tag_map
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ async def apple_fetch(
 
     流程：
     1. _resolve_track 验证 track_id + 路径安全
-    2. 从 track 的 tag_map 读 song_id（cnID / songId freeform）
+    2. 现读文件 tag_map 读 song_id（cnID / songId freeform，B 方案不入库）
     3. song_id 不在标签 → 400
     4. 调 apple.get_song_info 拉取权威元数据
     5. 返回 authoritative_fields
@@ -108,15 +108,12 @@ async def apple_fetch(
     - 422 — 非数字 track_id
     - 503 — store 未初始化 / token 抓取失败
     """
-    _, row = await _resolve_track(track_id)
+    track_path, _ = await _resolve_track(track_id)
 
-    # 读取 tag_map
-    tag_map_str: str = str(row.get("tag_map") or "{}")
+    # 现读文件 tag_map（B 方案：不入库，按需读）
     try:
-        tag_map = json.loads(tag_map_str)
-    except (json.JSONDecodeError, TypeError):
-        tag_map = {}
-    if not isinstance(tag_map, dict):
+        tag_map, _codec = read_tag_map(track_path)
+    except (ValueError, Exception):
         tag_map = {}
 
     # 提取 song_id

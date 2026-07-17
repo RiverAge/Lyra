@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -95,6 +94,33 @@ async def meta_fields() -> dict[str, object]:
 
 
 # ---------------------------------------------------------------------------
+# GET /meta/{track_id}/tags — 现读文件的 tag_map（B 方案）
+# ---------------------------------------------------------------------------
+
+
+@meta_router.get("/meta/{track_id}/tags")
+async def meta_tags(track_id: str) -> dict[str, object]:
+    """现读音频文件的 tag_map（mutagen key → list[str]）。
+
+    B 方案：tag_map 不入库，详情页 MetaTab / 元数据展示按需现读。
+    现读经 writer.read_tag_map + 白名单过滤，只返回 18 个语义字段对应的
+    mutagen key + cnID/songId，不含 covr 等二进制。
+
+    Raises:
+        HTTPException: 422/503/404（同 _resolve_track）。
+    """
+    track_path, _ = await _resolve_track(track_id)
+
+    try:
+        tag_map, codec = read_tag_map(track_path)
+    except (ValueError, Exception):
+        tag_map = {}
+        codec = None
+
+    return {"track_id": track_id, "tag_map": tag_map, "codec": codec}
+
+
+# ---------------------------------------------------------------------------
 # POST /meta/{track_id}/diff
 # ---------------------------------------------------------------------------
 
@@ -103,20 +129,15 @@ async def meta_fields() -> dict[str, object]:
 async def meta_diff(track_id: str, req: DiffRequest) -> dict[str, object]:
     """对比本地标签与权威元数据。
 
-    从 store 取 track 的 tag_map（JSON 反序列化），
+    现读文件 tag_map（via writer.read_tag_map，B 方案：不入库），
     从 body 接收 authoritative_fields，
     调 diff.py compute_diff 产出 before/after 对比结果。
     """
-    _, row = await _resolve_track(track_id)
+    track_path, _ = await _resolve_track(track_id)
 
-    # 读取 tag_map
-    tag_map_str: str = str(row.get("tag_map") or "{}")
     try:
-        local_tag_map = json.loads(tag_map_str)
-    except (json.JSONDecodeError, TypeError):
-        local_tag_map = {}
-
-    if not isinstance(local_tag_map, dict):
+        local_tag_map, _codec = read_tag_map(track_path)
+    except (ValueError, Exception):
         local_tag_map = {}
 
     result = compute_diff(

@@ -73,6 +73,24 @@ for _for_sem, (_for_mp4, _for_flac, _for_mp3) in FIELD_MAP.items():
 
 
 # ---------------------------------------------------------------------------
+# tag_map 收集白名单：只保留检索/元数据编辑必需的 mutagen key。
+#
+# 历史问题：原 `for key in mf` 无脑收集全部 key，MP4 的 covr（封面二进制
+# ~900KB/首）被 decode 成乱码字符串塞进 tag_map，导致库膨胀到 33GB。
+# 白名单 = FIELD_MAP 的全部 mutagen key（diff.py/MetaTab 元数据 diff 只认
+# 这 18 个语义字段）+ Apple Music 匹配必需的 cnID/songId（extract_song_id
+# 用）。scanner 收集入库 和 writer.read_tag_map 现读 都套此白名单，避免
+# covr 等二进制/无用字段进 tag_map。
+#
+# 复用 FIELD_MAP 反推，避免两处维护。
+# ---------------------------------------------------------------------------
+ALLOWED_TAG_KEYS: frozenset[str] = frozenset(
+    {k for tpl in FIELD_MAP.values() for k in tpl if k is not None}
+    | {"cnID", "----:com.apple.iTunes:songId"}
+)
+
+
+# ---------------------------------------------------------------------------
 # 公共接口
 # ---------------------------------------------------------------------------
 
@@ -142,6 +160,8 @@ def read_tag_map(file_path: Path) -> tuple[dict[str, list[str]], str]:
     if isinstance(mf, MP4):
         codec = "alac"
         for key in mf:
+            if key not in ALLOWED_TAG_KEYS:
+                continue
             raw_values = mf[key]
             if not isinstance(raw_values, list):
                 raw_values = [raw_values]
@@ -149,10 +169,14 @@ def read_tag_map(file_path: Path) -> tuple[dict[str, list[str]], str]:
     elif isinstance(mf, FLAC):
         codec = "flac"
         for key in mf:
+            if key not in ALLOWED_TAG_KEYS:
+                continue
             tag_map[key] = [str(v) for v in mf[key]]
     elif isinstance(mf, MP3):
         codec = "mp3"
         for key in mf:
+            if key not in ALLOWED_TAG_KEYS:
+                continue
             values = mf[key]
             try:
                 items = values if isinstance(values, list) else [values]

@@ -709,10 +709,15 @@ class TestCreditsRoute:
         store: IndexStore,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
-        tag_map: str = '{"cnID": ["123456"], "©nam": ["Test Song"]}',
+        tag_map: dict | None = None,
         title: str = "Test Song",
     ) -> int:
-        """辅助：创建测试音频文件并插入 store。"""
+        """辅助：创建测试音频文件并插入 store。
+
+        B 方案后 tag_map 不入库，credits/apple 端点现读文件 via
+        read_tag_map。测试 mock read_tag_map 返回 tag_map（dict）模拟。
+        默认含 cnID（credits/apple 匹配必需）。
+        """
         monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
 
         src = _FIXTURE_DIR / "test.m4a"
@@ -722,13 +727,21 @@ class TestCreditsRoute:
         else:
             dst.write_bytes(b"\x00" * 100)
 
+        # mock 现读 read_tag_map 返回固定 tag_map（B 方案：不入库）
+        if tag_map is None:
+            tag_map = {"cnID": ["123456"], "©nam": [title]}
+        import backend.server.credits_routes as _credits_mod
+        monkeypatch.setattr(
+            _credits_mod, "read_tag_map",
+            lambda path: (tag_map, "alac"),
+        )
+
         return await store.insert_track(
             title=title,
             artist="Artist",
             path=str(dst).replace("\\", "/"),
             codec="alac",
             duration=200000,
-            tag_map=tag_map,
         )
 
     async def test_credits_returns_authoritative_fields(
@@ -772,7 +785,7 @@ class TestCreditsRoute:
         """tag_map 中无 cnID → 400。"""
         rowid = await self._prepare_track(
             store, tmp_path, monkeypatch,
-            tag_map='{"©nam": ["No Song ID"]}',
+            tag_map={"©nam": ["No Song ID"]},
             title="No Song ID",
         )
 
@@ -793,7 +806,7 @@ class TestCreditsRoute:
         """哨兵 → 200 + no_credits。"""
         rowid = await self._prepare_track(
             store, tmp_path, monkeypatch,
-            tag_map='{"cnID": ["999999"], "©nam": ["No Credits Song"]}',
+            tag_map={"cnID": ["999999"], "©nam": ["No Credits Song"]},
             title="No Credits Song",
         )
 
@@ -821,7 +834,7 @@ class TestCreditsRoute:
         """全 region 失败 → 503。"""
         rowid = await self._prepare_track(
             store, tmp_path, monkeypatch,
-            tag_map='{"cnID": ["111111"], "©nam": ["Failed Song"]}',
+            tag_map={"cnID": ["111111"], "©nam": ["Failed Song"]},
             title="Failed Song",
         )
 
