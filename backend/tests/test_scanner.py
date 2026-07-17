@@ -513,9 +513,13 @@ async def test_scan_all_recursive_multi_level(
     assert count > 0
 
     # 验证入库记录的 tag_map 包含 cpil（证明 _read_audio_tags 未崩溃）
+    # list_tracks 是列表 API 专用 SELECT（排除 tag_map 等大字段），
+    # 验证 tag_map 用 get_track_by_id（SELECT * 含全字段）。
     rows = await store.list_tracks(limit=10, offset=0)
     assert len(rows) > 0
-    tag_map_str = rows[0]["tag_map"]
+    full_row = await store.get_track_by_id(rows[0]["id"])
+    assert full_row is not None
+    tag_map_str = full_row["tag_map"]
     assert "cpil" in tag_map_str, (
         f"tag_map should contain 'cpil' key (P1-2 regression), "
         f"got: {tag_map_str[:200]}"

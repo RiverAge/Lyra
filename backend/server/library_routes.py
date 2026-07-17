@@ -198,12 +198,63 @@ def _read_cover_bytes_sync(file_path: Path) -> tuple[bytes, str] | None:
     return None
 
 
+def _make_thumbnail_sync(
+    cover_bytes: bytes, *, max_width: int = 300,
+) -> tuple[bytes, str] | None:
+    """同步：ffmpeg 把封面 bytes 压成 JPEG 缩略图（在 executor 中运行）。
+
+    高分辨率原图（实测单张 2-3MB）→ 300px JPEG ~几十 KB。
+    列表页一页 20 首封面，原图传输 40-60MB，缩略图后降至 ~1MB。
+
+    Returns:
+        (jpeg_bytes, "image/jpeg") 或 None（ffmpeg 不可用/转码失败 → 调用方回退原图）。
+    """
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return None  # 容器内 ffmpeg 必有；本机 dev 无则回退原图
+
+    # ffmpeg: stdin pipe 输入原 bytes，scale 到 max_width（保持比例），输出 JPEG。
+    # -1 保持高宽比（按 width），jpeg质量 85 视觉无损体积小。
+    cmd = [
+        ffmpeg, "-i", "pipe:0",
+        "-vf", f"scale={max_width}:-1",
+        "-q:v", "5",  # JPEG quality 2-31，5 接近视觉无损
+        "-f", "image2", "-vcodec", "mjpeg", "pipe:1",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, input=cover_bytes,
+            capture_output=True, timeout=10,
+        )
+    except Exception:
+        logger.debug("artwork thumbnail transcode failed", exc_info=True)
+        return None
+    if proc.returncode != 0 or not proc.stdout:
+        return None
+    return proc.stdout, "image/jpeg"
+
+
 @library_router.get("/library/{track_id}/artwork")
-async def get_track_artwork(track_id: str) -> Response:
+async def get_track_artwork(
+    track_id: str,
+    size: str = Query(
+        default="thumb",
+        description="thumb=缩略图(300px JPEG,~几十KB,列表用);full=原图",
+    ),
+) -> Response:
     """封面图端点——从音频文件 tag 现读封面 bytes。
 
     前端 ``<img src="/api/library/{id}/artwork">`` 直接用。
     has_cover=0 或文件无封面 → 404。
+
+    size=thumb(默认)：ffmpeg 转缩略图(高分辨率原图 2-3MB → 几十 KB)。
+    列表页一页 20 首封面，原图传输 40-60MB，缩略图后降至 ~1MB。
+    size=full：返回原 bytes（详情页大图用）。
+
+    加 Cache-Control(immutable)：同一封面不重复请求 + 不重复 mutagen 解析。
 
     Raises:
         HTTPException 422: track_id 非数字。
@@ -248,4 +299,19 @@ async def get_track_artwork(track_id: str) -> Response:
         raise HTTPException(status_code=404, detail="No cover art")
 
     cover_bytes, media_type = result
-    return Response(content=cover_bytes, media_type=media_type)
+
+    # 缩略图（默认）：ffmpeg 转，失败回退原图不阻断。
+    want_thumb = size != "full"
+    if want_thumb:
+        thumb = await asyncio.get_event_loop().run_in_executor(
+            None, _make_thumbnail_sync, cover_bytes,
+        )
+        if thumb is not None:
+            cover_bytes, media_type = thumb
+
+    # 缓存：封面图内容不变（track id 稳定），immutable 让浏览器长缓存，
+    # 列表翻页/刷新不重复请求 artwork，也不重复 mutagen 解析。
+    headers = {"Cache-Control": "public, max-age=604800, immutable"}
+    return Response(
+        content=cover_bytes, media_type=media_type, headers=headers,
+    )

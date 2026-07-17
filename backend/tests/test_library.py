@@ -103,13 +103,16 @@ async def test_library_with_track(store: IndexStore, client: AsyncClient) -> Non
     assert item["bitrate"] == 256000
     assert item["codec"] == "alac"
     assert item["samplerate"] == 44100
-    assert item["tag_map"] == '{"©nam":"Test Song"}'
-    assert item["mtime"] == 1750000000000
+    # 列表端点不返回 tag_map（可能含内嵌歌词等大 JSON，20 首可达 100MB+）。
+    # tag_map 在单首详情 /library/{id} 返回供 MetaTab 用。同时不返回
+    # mtime/folder_hash/created_at/updated_at（内部字段）。
+    assert "tag_map" not in item
+    assert "mtime" not in item
+    assert "folder_hash" not in item
+    assert "created_at" not in item
+    assert "updated_at" not in item
     assert item["size"] == 25000000
     assert item["has_cover"] == 1
-    assert item["folder_hash"] is None
-    assert item["created_at"] == 1750000000000
-    assert item["updated_at"] == 1750000000000
 
 
 async def test_library_pagination(store: IndexStore, client: AsyncClient) -> None:
@@ -222,6 +225,8 @@ async def test_get_track_by_id_ok(store: IndexStore, client: AsyncClient) -> Non
     assert item["path"] == "/music/apple/Artist/Album/01 Test.m4a"
     assert item["duration"] == 240000
     assert item["codec"] == "alac"
+    # 单首详情端点保留 tag_map（MetaTab 元数据聚合需要），与列表端点区分。
+    assert item["tag_map"] == '{"©nam":"Test Song"}'
 
 
 async def test_get_track_by_id_not_found(client: AsyncClient) -> None:

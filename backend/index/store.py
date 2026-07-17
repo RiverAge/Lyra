@@ -16,6 +16,17 @@ import aiosqlite
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# 列表查询字段：列表端点（/api/library）只返回展示必需列，排除 tag_map
+# （可能含内嵌歌词等大 JSON，单首实测几十 KB ~ MB 级，20 首一页可达 100MB+）。
+# tag_map 在单首详情端点（/library/{id} → get_track_by_id SELECT *）返回，
+# 供 MetaTab 元数据聚合按需读取。
+# 同时排除 mtime/folder_hash/created_at/updated_at（内部字段，前端不用）。
+_TRACK_LIST_COLUMNS = (
+    "id, title, artist, album_artist, album, path, track, disc, year, "
+    "duration, bitrate, codec, samplerate, size, has_cover"
+)
+
+# ---------------------------------------------------------------------------
 # Schema DDL（基线从零初始化，含所有索引/约束/默认值）
 # ---------------------------------------------------------------------------
 
@@ -254,7 +265,7 @@ class IndexStore:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
-                f"SELECT * FROM tracks {where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks {where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
                 params,
             )
             rows = await cursor.fetchall()
@@ -278,7 +289,7 @@ class IndexStore:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
-                "SELECT * FROM tracks ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
             )
             rows = await cursor.fetchall()
