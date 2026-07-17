@@ -94,6 +94,12 @@ const router = useRouter()
 onMounted(() => {
   void libraryStore.loadPage(1)
   void libraryStore.loadStats()
+  // 主动拉一次扫描状态：ScanProgress 自身 onMounted 也拉，但它只在
+  // showScanner=true 时才渲染——而 showScanner 依赖 store 有真实状态。
+  // 首进 Library 时 store 是初始 idle/totalFiles=0 → showScanner=false
+  // → ScanProgress 不渲染 → 不触发 refreshStatus → 死锁，进度块不出现。
+  // 这里打破死锁：拉到后台正在扫的状态后 showScanner 立即 true。
+  void scannerStore.refreshStatus()
 })
 
 // 扫描进度仅在 scanning 或刚扫完时显示（idle 且无进度则隐藏）
