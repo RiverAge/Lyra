@@ -9,8 +9,6 @@
         音乐元数据与歌词管理工具
       </p>
       <div class="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-tertiary">
-        <span class="pill"><span class="dot" />后端已连接</span>
-        <span class="meta-item"><b>扫描</b> {{ scanStatusText }}</span>
         <span class="meta-item"><b>转码</b> ALAC → Opus 实时</span>
         <!-- 库概览：原四格统计卡内联到此行。数字滚动（useCountUp）：
              扫描完成 SSE 带 stats 进来时旧值→新值 ease-out 滚动。
@@ -72,7 +70,6 @@
 <script setup lang="ts">
 import { useCountUp } from "@/composables/useCountUp"
 import { useLibraryStore } from "@/stores/library"
-import { useScannerStore } from "@/stores/scanner"
 import TrackTable from "@/components/library/TrackTable.vue"
 
 /**
@@ -82,28 +79,18 @@ import TrackTable from "@/components/library/TrackTable.vue"
  * - 页头 meta 行内联四项统计（曲目/专辑/时长/无损占比），数字滚动
  *   （useCountUp）；扫描完成 SSE 带 stats 进来时旧值→新值 ease-out 滚动
  * - onMounted：loadPage(1) + loadStats()（统计与列表独立加载）
- * - 扫描进度/SSE 已提升到 App.vue 级（header ScanIndicator 常驻），
- *   本页只读 scannerStore.isScanning 显示「扫描 进行中/空闲」状态文字
+ * - 扫描进度/SSE/连接态均由 header ScanIndicator 统一展示（App.vue 级常驻）
  * - 全局搜索走 ⌘K SearchModal（App.vue 挂载），列表只做分页浏览
  * - 点击表格行 → /track/:id
  */
 
 const libraryStore = useLibraryStore()
-const scannerStore = useScannerStore()
 const router = useRouter()
 
 onMounted(() => {
   void libraryStore.loadPage(1)
   void libraryStore.loadStats()
 })
-
-onUnmounted(() => {
-  // SSE 由 App.vue 统一管理，此处不再 stopProgress
-})
-
-const scanStatusText = computed(() =>
-  scannerStore.isScanning ? "进行中" : "空闲",
-)
 
 // ---- 库概览（页头内联）----
 const hasStats = computed(() => libraryStore.stats !== null)
@@ -156,25 +143,6 @@ async function reload(): Promise<void> {
   width: 1px;
   height: 12px;
   background-color: var(--theme-border-default);
-}
-
-/* pill 状态点 */
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border-radius: var(--radius-full);
-  background-color: var(--theme-bg-subtle);
-  border: 1px solid var(--theme-border-default);
-  font-size: 12px;
-  color: var(--theme-text-secondary);
-}
-.pill .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--theme-success);
 }
 
 /* 分页按钮：多伪类组合（:hover:not(:disabled):not(.active)）保留 scoped */
