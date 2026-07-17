@@ -19,7 +19,7 @@
     </div>
 
     <template v-else>
-      <!-- 曲库区 -->
+      <!-- 曲库区（只读状态：触发扫描由 header ScanIndicator 统一提供） -->
       <section class="mb-5 rounded-lg border border-line bg-surface p-5 shadow-card">
         <div class="mb-5 flex items-start justify-between gap-4">
           <div>
@@ -46,20 +46,6 @@
             <span class="info-k">错误</span>
             <span class="info-v text-danger">{{ scannerStore.errorMessage }}</span>
           </div>
-        </div>
-
-        <div class="flex items-center gap-2.5">
-          <BaseButton
-            variant="primary"
-            icon="RefreshCw"
-            :disabled="scannerStore.isScanning || scannerStore.triggering || !scannerStore.libraryConfigured"
-            @click="onTriggerScan"
-          >
-            {{ scannerStore.triggering ? "触发中…" : (scannerStore.isScanning ? "扫描中…" : "扫描曲库") }}
-          </BaseButton>
-          <BaseButton variant="secondary" icon="RefreshCw" :disabled="scannerStore.isScanning" @click="scannerStore.refreshStatus()">
-            刷新状态
-          </BaseButton>
         </div>
 
         <div v-if="scannerStore.triggerError" class="alert alert-fail">{{ scannerStore.triggerError }}</div>
@@ -212,10 +198,6 @@ async function onSave(): Promise<void> {
   if (ok) {
     initialValue.value = creditsBaseUrl.value
   }
-}
-
-async function onTriggerScan(): Promise<void> {
-  await scannerStore.trigger()
 }
 
 /** 时间戳（秒/毫秒）→ 本地可读时间；null 显示 — */

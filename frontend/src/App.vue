@@ -27,6 +27,7 @@
             <span class="search-trigger-label">搜索…</span>
             <kbd class="kbd">Ctrl K</kbd>
           </button>
+          <ScanIndicator />
           <BaseButton
             variant="ghost"
             size="sm"
@@ -56,8 +57,12 @@
 <script setup lang="ts">
 import BaseButton from "@/components/ui/BaseButton.vue"
 import Icon from "@/components/ui/icons/Icon.vue"
+import ScanIndicator from "@/components/scanner/ScanIndicator.vue"
 import SearchModal from "@/components/search/SearchModal.vue"
 import { useSearchStore } from "@/stores/search"
+import { useScannerStore } from "@/stores/scanner"
+import { useLibraryStore } from "@/stores/library"
+import type { LibraryStats } from "@/apis/library"
 
 /* global KeyboardEvent, EventTarget, HTMLElement */
 
@@ -73,6 +78,14 @@ import { useSearchStore } from "@/stores/search"
 const route = useRoute()
 const router = useRouter()
 const searchStore = useSearchStore()
+const scannerStore = useScannerStore()
+const libraryStore = useLibraryStore()
+
+// 扫描完成事件带 stats 回调：后端算好 stats 推过来，填 libraryStore.stats，
+// 省一次 /library/stats HTTP 全表聚合。App 级注册 → 任意页面扫描完成都刷新。
+scannerStore.setOnStats((s) => {
+  libraryStore.setStats(s as unknown as LibraryStats)
+})
 
 const navLinks = [
   { to: "/library", label: "曲库" },
@@ -122,9 +135,14 @@ function isTypingTarget(t: EventTarget | null): boolean {
 
 onMounted(() => {
   window.addEventListener("keydown", onGlobalKeydown)
+  // SSE 扫描进度订阅提升到 App 级：跨页面常驻（切走 Library 不断开）。
+  // startProgress 幂等（已有 EventSource 则 return）。refreshStatus 拿即时快照。
+  void scannerStore.refreshStatus()
+  scannerStore.startProgress()
 })
 onUnmounted(() => {
   window.removeEventListener("keydown", onGlobalKeydown)
+  scannerStore.stopProgress()
 })
 </script>
 
