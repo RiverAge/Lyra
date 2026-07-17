@@ -109,17 +109,27 @@ class IndexStore:
 
     @asynccontextmanager
     async def _connect(self) -> AsyncGenerator[aiosqlite.Connection, None]:
-        """打开连接 + 设 busy_timeout，统一所有 DB 访问入口。
+        """打开连接 + 设 PRAGMA，统一所有 DB 访问入口。
 
-        WAL 下读不阻塞写、写不阻塞读，但**写写仍互斥**——多连接同时写
-        （scan_all 逐文件 upsert + watcher 增量 upsert）抢写锁时，默认
-        ``busy_timeout=0`` 会立刻抛 ``database is locked`` 而非等待重试。
-        设 5s busy_timeout 让抢锁的连接等待对方释放而非直接报错。
+        - ``busy_timeout=5000``：WAL 下写写仍互斥，多连接（scan_all 逐文件
+          upsert + watcher 增量）抢写锁时，默认 0 会立刻抛
+          ``database is locked`` 而非等待重试。设 5s 让抢锁连接等待释放。
+        - ``cache_size=-65536``：每连接 64MB page cache（负值=KB）。
+          默认仅 2MB，2 万行表 + 4 个索引放不进 → stats 的全表扫每 page
+          读盘。本地内存库实测该 query 仅 17ms，生产 ZFS bind mount 上
+          5s——差 300 倍，瓶颈在磁盘读。每连接给 64MB 让整张表常驻内存。
+          per-op 连接模式下此 cache 每次重建，但配合 mmap_size + OS page
+          cache，热数据基本不落盘。
+        - ``mmap_size=268435456``：256MB mmap 映射 DB 文件，Linux page cache
+          自然跨连接缓存热 page，避免每次连接重新读盘。持久属性。
+
         同时每连接设 row_factory（与原 `async with aiosqlite.connect` 一致）。
         """
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
             await db.execute("PRAGMA busy_timeout=5000")
+            await db.execute("PRAGMA cache_size=-65536")
+            await db.execute("PRAGMA mmap_size=268435456")
             yield db
 
     # ---- schema ----
@@ -183,6 +193,8 @@ class IndexStore:
         lossless_codecs = ("ALAC", "FLAC", "WAV", "APE", "DSD")
         placeholders = ",".join("?" for _ in lossless_codecs)
 
+        import time
+        t0 = time.monotonic()
         async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
@@ -197,6 +209,7 @@ class IndexStore:
                 lossless_codecs,
             )
             row = await cursor.fetchone()
+            logger.info("[stats] aggregate query db_ms=%.0f", (time.monotonic() - t0) * 1000)
             if not row:
                 return {
                     "track_count": 0,
@@ -282,7 +295,8 @@ class IndexStore:
         async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
-                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks {where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks {where_sql} "
+                "ORDER BY id ASC LIMIT ? OFFSET ?",
                 params,
             )
             rows = await cursor.fetchall()
@@ -326,10 +340,13 @@ class IndexStore:
         Returns:
             sqlite3.Row 列表（列表列集，无 tag_map），按 id 升序。
         """
+        import time
+
         q = q.strip()
         if not q:
             return []
         pattern = f"%{q}%"
+        t0 = time.monotonic()
         async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
@@ -339,6 +356,14 @@ class IndexStore:
                 (pattern, pattern, pattern, limit),
             )
             rows = await cursor.fetchall()
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            logger.info(
+                "[search] q=%r limit=%d hits=%d db_ms=%.1f",
+                q,
+                limit,
+                len(rows),
+                elapsed_ms,
+            )
             return list(rows)
 
     async def get_track_by_path(self, path: str) -> sqlite3.Row | None:
@@ -454,7 +479,7 @@ class IndexStore:
     # 固定列而非每行动态列：批量 INSERT...VALUES 多行需要所有行列数一致，
     # 取并集会让 SQL 静态可预编译，executemany 一次提交一个事务。
     # 缺失的可空列（track/disc/year/bitrate/samplerate）填 None（列允许 NULL）；
-    # NOT NULL DEFAULT 列由 scanner 保证提供（title/artist/.../duration/tag_map/mtime/size/has_cover）。
+    # NOT NULL DEFAULT 列由 scanner 保证提供（title/.../duration/tag_map/size/has_cover）。
     _BATCH_COLUMNS = (
         "title", "artist", "album_artist", "album", "path",
         "track", "disc", "year", "duration", "bitrate", "codec", "samplerate",

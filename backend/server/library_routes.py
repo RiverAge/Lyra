@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,12 +24,18 @@ library_router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# stats 内存缓存：扫描期间返回上次扫完的值，跳过全表扫（见 library_stats）。
-# 单 worker 进程内存即可；重启丢失 → 首次查询走 DB 重建（行少时快）。
-# 无需主动清：扫完后 is_scanning=false，下次请求自然走 DB 刷新缓存。
-# SimpleNamespace.value 用法避免模块级可变全局被 lint 误报（统一一个可变槽）。
+# stats 内存缓存：扫描期间 + 扫描结束后的 TTL 内复用，跳过全表扫。
+#
+# 为什么 idle 态也要缓存：stats 的 COUNT(DISTINCT album) 全表扫在 2 万行
+# + ZFS bind mount 上实测 ~5s，首页每次刷新都查 → 首页统计卡长期 5s 慢。
+# 扫描结束后的数据在下次扫描前不会变，所以 idle 态用 TTL（60s）复用上
+# 一次结果即可——首次/过期后查一次 DB 刷缓存，之后 TTL 内瞬返回。
+#
+# SimpleNamespace 单槽避免模块级可变全局被 lint 误报。
+# value=缓存结果，at=写入 monotonic 时间戳，None=无缓存。
 # ---------------------------------------------------------------------------
-_stats_cache = SimpleNamespace(value=None)
+_STATS_CACHE_TTL = 60.0  # idle 态缓存 TTL（秒）
+_stats_cache = SimpleNamespace(value=None, at=0.0)
 
 
 def _track_row_to_dict(row: dict) -> dict:
@@ -120,16 +127,40 @@ async def library_stats() -> dict:
             detail="Database not initialized",
         )
 
-    # 扫描中且有缓存 → 返回缓存（跳过全表扫，避免 17s+ 拖垮首页）
+    now = time.monotonic()
+
+    # 扫描中：缓存命中即返回（跳过全表扫，避免与 upsert 抢 IO/锁）
     status = await store.get_scanner_status()
     is_scanning = status is not None and status["state"] == "scanning"
     if is_scanning and _stats_cache.value is not None:
+        logger.debug(
+            "[stats] scanning → cache hit (skipped full-table scan)"
+        )
         return _stats_cache.value
 
+    # idle 态：TTL 内复用上次结果（扫描结束后数据不变，无需每次全表扫）
+    if (
+        not is_scanning
+        and _stats_cache.value is not None
+        and (now - _stats_cache.at) < _STATS_CACHE_TTL
+    ):
+        logger.debug(
+            "[stats] idle → cache hit within TTL %.0fs",
+            now - _stats_cache.at,
+        )
+        return _stats_cache.value
+
+    # 缓存未命中/过期/空：查 DB（全表扫，~数秒）+ 刷新缓存
+    t0 = time.monotonic()
     result = await store.library_stats()
-    # 空缓存兜底：扫描中但还没缓存（首次扫描、进程重启丢内存缓存），
-    # 此时行数尚少（或刚起步），查一次 DB 拿基线，后续扫描期复用。
+    elapsed_ms = (time.monotonic() - t0) * 1000
     _stats_cache.value = result
+    _stats_cache.at = now
+    logger.info(
+        "[stats] DB query refreshed cache db_ms=%.0f track_count=%d",
+        elapsed_ms,
+        result.get("track_count", 0),
+    )
     return result
 
 

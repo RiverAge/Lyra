@@ -25,8 +25,8 @@ from backend.index.watcher import Watcher
 from backend.log_setup import AccessLogMiddleware, configure_logging
 from backend.play.stream import play_router
 from backend.server.apple_routes import apple_router
-from backend.server.credits_routes import credits_router
 from backend.server.config_routes import config_router
+from backend.server.credits_routes import credits_router
 from backend.server.editor_routes import editor_router
 from backend.server.library_routes import library_router
 from backend.server.lyrics_match_routes import lyrics_router as lyrics_match_router
@@ -146,18 +146,24 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN20
         )
         set_scanner(None)
 
-    # -- Apple WebAPI token 预热 --
-    try:
-        from backend.meta.apple import TokenManager
+    # -- Apple WebAPI token 预热（后台异步，不阻塞 startup） --
+    # ensure_token 要打 3-4 个 HTTPS 到 music.apple.com（大陆网络 3s+），
+    # 同步 await 会拖慢 startup。改后台 task：首次请求时若还没取到，
+    # TokenManager 自己会等/重试（已有 will retry on first request 兜底）。
+    async def _prefetch_apple_token() -> None:
+        try:
+            from backend.meta.apple import TokenManager
 
-        tm = TokenManager.get_instance()
-        await tm.ensure_token()
-        logger.info("Apple WebAPI token pre-fetched successfully.")
-    except Exception:
-        logger.warning(
-            "Apple WebAPI token pre-fetch failed. "
-            "Will retry on first request."
-        )
+            tm = TokenManager.get_instance()
+            await tm.ensure_token()
+            logger.info("Apple WebAPI token pre-fetched successfully.")
+        except Exception:
+            logger.warning(
+                "Apple WebAPI token pre-fetch failed. "
+                "Will retry on first request."
+            )
+
+    asyncio.create_task(_prefetch_apple_token())
 
     # -- ffmpeg 可用性探测 --
     try:

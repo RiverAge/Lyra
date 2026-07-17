@@ -61,8 +61,20 @@
                 @mousemove="searchStore.activeIndex = i"
                 @click="select(item.id)"
               >
-                <span class="item-title">{{ item.title || "（无标题）" }}</span>
-                <span class="item-meta">{{ item.artist || "未知艺人" }} · {{ item.album || "未知专辑" }}</span>
+                <div class="item-cov">
+                  <img
+                    v-if="item.has_cover && !imgError[item.id]"
+                    :src="`/api/library/${item.id}/artwork`"
+                    :alt="item.title"
+                    loading="lazy"
+                    @error="imgError[item.id] = true"
+                  >
+                  <Icon v-else name="Music" :size="16" class="text-tertiary" />
+                </div>
+                <div class="item-text">
+                  <span class="item-title">{{ item.title || "（无标题）" }}</span>
+                  <span class="item-meta">{{ item.artist || "未知艺人" }} · {{ item.album || "未知专辑" }}</span>
+                </div>
               </li>
             </ul>
           </div>
@@ -103,6 +115,9 @@ import Icon from "@/components/ui/icons/Icon.vue"
 const searchStore = useSearchStore()
 const router = useRouter()
 const inputEl = ref<HTMLInputElement | null>(null)
+
+// 封面加载失败回退：按 track.id 记录（与 TrackTable 同模式）
+const imgError = ref<Record<string, boolean>>({})
 
 // 打开时 focus 输入框
 watch(
@@ -219,14 +234,35 @@ async function select(id: string): Promise<void> {
 /* 结果项 */
 .search-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
   cursor: pointer;
   transition: background-color var(--animate-duration-hover) ease;
 }
 .search-item.active {
   background-color: var(--theme-bg-hover);
+}
+.item-cov {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background-color: var(--theme-bg-subtle);
+  flex-shrink: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.item-cov img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .item-title {
   font-size: 14px;

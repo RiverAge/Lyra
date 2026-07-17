@@ -123,6 +123,10 @@ async def scanner_status():
 
     if store is None:
         # DB 未初始化 → 返回基本信息
+        logger.warning(
+            "[scanner/status] store is None (DB not initialized) "
+            "→ returning not_initialized defaults"
+        )
         return {
             "state": "not_initialized",
             "count": 0,
@@ -138,6 +142,11 @@ async def scanner_status():
     row = await store.get_scanner_status()
 
     if row is None:
+        # scanner_status 表为空（首次启动、或全量扫还没跑到 set_scanner_status）
+        logger.info(
+            "[scanner/status] scanner_status row is None (no scan run yet) "
+            "→ returning idle defaults"
+        )
         return {
             "state": "idle",
             "count": 0,
@@ -150,6 +159,16 @@ async def scanner_status():
             "library_configured": library_configured,
         }
 
+    logger.info(
+        "[scanner/status] returning state=%s scan_type=%s count=%d "
+        "folder_count=%d total_files=%d last_scanned_at=%s",
+        row["state"],
+        row["scan_type"],
+        row["count"],
+        row["folder_count"],
+        row["total_files"] if "total_files" in row.keys() else 0,
+        row["last_scanned_at"],
+    )
     return {
         "state": row["state"],
         "scan_type": row["scan_type"],

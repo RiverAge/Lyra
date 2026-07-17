@@ -124,6 +124,7 @@ class Watcher:
         self._queue: asyncio.Queue[Path] = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
         self._debounce_task: asyncio.Task[None] | None = None
         self._periodic_task: asyncio.Task[None] | None = None
+        self._watchdog_task: asyncio.Task[None] | None = None
         self._running = False
         self._scanning = False
         self._watch_available = False
@@ -134,48 +135,60 @@ class Watcher:
         """启动文件监听。
 
         先尝试 watchdog，失败则退化到定时扫描。
+
+        watchdog 的 observer.start()（recursive=True）要递归遍历整个音乐库
+        注册 inotify watch——2 万+文件 / 数千 folder 在 ZFS bind mount 上
+        实测卡 46 秒，且全程无日志。这不阻塞 startup：watchdog 起没起来不
+        影响 API 服务 / 扫描（有 _initial_scan 兜底）。所以 observer 启动
+        丢后台 task，start() 立即返回，startup 不再白等。
         """
         if self._running:
             return
 
         self._running = True
 
-        # 尝试启动 watchdog
-        watchdog_ok = _try_init_watchdog()
-        if watchdog_ok:
-            try:
-                from watchdog.observers import Observer  # noqa: F811
+        # watchdog 启动在后台跑（可能慢），不阻塞 startup
+        self._watchdog_task = asyncio.create_task(self._start_watchdog())
 
-                observer = Observer()
-                handler = _WatchdogHandler(self._queue)
-                observer.schedule(handler, str(self._library_root), recursive=True)
-                observer.start()
+        # 启动 debounce 循环（watchdog 起来前事件入队也安全，loop 会消费）
+        self._debounce_task = asyncio.create_task(self._debounce_loop())
 
-                self._observer = observer
-                self._watch_available = True
-                logger.info(
-                    "Watcher 已启动 (watchdog), root=%s, debounce=%ss",
-                    self._library_root,
-                    _DEBOUNCE_SECONDS,
-                )
-            except Exception:
-                self._watch_available = False
-                logger.info(
-                    "Watcher not supported, falling back to periodic scan every %ds",
-                    _PERIODIC_SCAN_INTERVAL,
-                )
-        else:
+    async def _start_watchdog(self) -> None:
+        """后台启动 watchdog observer（可能慢，不阻塞 startup）。
+
+        observer.start() 递归注册 inotify watch 在大库 + ZFS 上慢（数十秒）。
+        起来后打日志；失败则置 _watch_available=False 触发退化定时扫描。
+        """
+        if not _try_init_watchdog():
             self._watch_available = False
             logger.info(
                 "Watchdog package not available, falling back to periodic scan every %ds",
                 _PERIODIC_SCAN_INTERVAL,
             )
+            self._periodic_task = asyncio.create_task(self._periodic_loop())
+            return
 
-        # 启动 debounce 循环
-        self._debounce_task = asyncio.create_task(self._debounce_loop())
+        try:
+            from watchdog.observers import Observer  # noqa: F811
 
-        # 退化模式：启动定时全量扫描
-        if not self._watch_available:
+            observer = Observer()
+            handler = _WatchdogHandler(self._queue)
+            observer.schedule(handler, str(self._library_root), recursive=True)
+            observer.start()
+
+            self._observer = observer
+            self._watch_available = True
+            logger.info(
+                "Watcher 已启动 (watchdog), root=%s, debounce=%ss",
+                self._library_root,
+                _DEBOUNCE_SECONDS,
+            )
+        except Exception:
+            self._watch_available = False
+            logger.info(
+                "Watcher not supported, falling back to periodic scan every %ds",
+                _PERIODIC_SCAN_INTERVAL,
+            )
             self._periodic_task = asyncio.create_task(self._periodic_loop())
 
     async def stop(self) -> None:
@@ -193,7 +206,7 @@ class Watcher:
             self._observer = None
 
         # 取消任务
-        for task in (self._debounce_task, self._periodic_task):
+        for task in (self._debounce_task, self._periodic_task, self._watchdog_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -203,6 +216,7 @@ class Watcher:
 
         self._debounce_task = None
         self._periodic_task = None
+        self._watchdog_task = None
 
         # 清空队列
         while not self._queue.empty():
