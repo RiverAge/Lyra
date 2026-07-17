@@ -94,12 +94,22 @@ const router = useRouter()
 onMounted(() => {
   void libraryStore.loadPage(1)
   void libraryStore.loadStats()
-  // 主动拉一次扫描状态：ScanProgress 自身 onMounted 也拉，但它只在
-  // showScanner=true 时才渲染——而 showScanner 依赖 store 有真实状态。
-  // 首进 Library 时 store 是初始 idle/totalFiles=0 → showScanner=false
-  // → ScanProgress 不渲染 → 不触发 refreshStatus → 死锁，进度块不出现。
-  // 这里打破死锁：拉到后台正在扫的状态后 showScanner 立即 true。
+  // 开 SSE 订阅扫描进度：连接后后端会推 init 事件（带真实 state/count/total），
+  // 即使此刻扫描还没开始（startup 的 _initial_scan 是异步 task，可能晚于
+  // 页面 onMounted），SSE 连上后扫描一启动会持续推送，store 实时更新。
+  //
+  // 不能只靠 ScanProgress.onMounted 的 startProgress——它只在 showScanner=true
+  // 时渲染，而 F5 后 store 是初始 idle/0 → showScanner=false → 不渲染 →
+  // 不开 SSE → 死锁，扫描启动了 Library 也收不到，进度块永不出现
+  // （"点 Settings 再回来才有"是因为 Settings 的 refreshStatus 晚一拍
+  // 撞上 scanning；F5 又消失是同样死锁重演）。这里在 Library 级开 SSE 打破死锁。
+  // refreshStatus 仍调一次拿即时快照（SSE init 之前先用上）。
   void scannerStore.refreshStatus()
+  scannerStore.startProgress()
+})
+
+onUnmounted(() => {
+  scannerStore.stopProgress()
 })
 
 // 扫描进度仅在 scanning 或刚扫完时显示（idle 且无进度则隐藏）
