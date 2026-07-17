@@ -56,13 +56,13 @@ class TestPathCalc:
 
         # apple 默认词：<song>.ttml（无后缀）
         assert apple_path == library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song.ttml"
-        # netease 增强词：<song>-netease.ttml
+        # netease 增强词：<song>-netease.ttml（平铺在 apple/ 同目录）
         assert netease_path == (
-            library / ".lyrics" / "netease" / "Artist" / "Album" / "01 Song-netease.ttml"
+            library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song-netease.ttml"
         )
-        # qq 增强词：<song>-qq.ttml
+        # qq 增强词：<song>-qq.ttml（平铺在 apple/ 同目录）
         assert qq_path == (
-            library / ".lyrics" / "qq" / "Artist" / "Album" / "01 Song-qq.ttml"
+            library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song-qq.ttml"
         )
 
     def test_deep_directory_mirror(self, tmp_path: Path) -> None:
@@ -79,7 +79,7 @@ class TestPathCalc:
             library / ".lyrics" / "apple" / "周杰" / "范特西" / "Disc 1" / "01 晴天.ttml"
         )
         assert netease_path == (
-            library / ".lyrics" / "netease" / "周杰" / "范特西" / "Disc 1"
+            library / ".lyrics" / "apple" / "周杰" / "范特西" / "Disc 1"
             / "01 晴天-netease.ttml"
         )
 
@@ -117,12 +117,13 @@ class TestPathCalc:
         assert Path(paths_qq["qq_ttml_path"]).as_posix().endswith("qq/apple/A/B/song-qq.ttml")
         assert Path(paths_qq["qq_raw_path"]).as_posix().endswith("qq/apple/A/B/song.json")
 
-    def test_sidecar_path_for_replaces_first_segment(self, tmp_path: Path) -> None:
-        """sidecar_path_for（Lyra 封装）：source 替换 mirror 首段，对齐 AGENTS.md §3.3。
+    def test_sidecar_path_for_flat_in_apple_dir(self, tmp_path: Path) -> None:
+        """sidecar_path_for（Lyra 封装）：所有来源平铺在 .lyrics/apple/ 下，靠后缀区分。
 
-        与 planned_lyrics_paths 的前置语义不同——sidecar_path_for 做替换：
-        audio=apple/Artist/Album/song.m4a → .lyrics/<source>/Artist/Album/song[-suffix].ttml
-        （不双写 apple/）。这是 Lyra 侧实际落盘的路径契约。
+        对齐 navidrome lyric-bridge：bridge 在 .lyrics/<音频镜像目录> 一个目录里
+        扫 <song>.ttml / <song>-netease.ttml / <song>-qq.ttml。故三来源 sidecar
+        必须落在同一目录（.lyrics/apple/Artist/Album/），source 只进文件名后缀。
+        apple 无后缀，netease/qq 加 -<source> 后缀。这是 Lyra 侧实际落盘契约。
         """
         library = tmp_path / "lib"
         audio = library / "apple" / "Artist" / "Album" / "01 Song.m4a"
@@ -133,14 +134,14 @@ class TestPathCalc:
             library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song.ttml"
         )
         assert sidecar_path_for(audio, library, "netease") == (
-            library / ".lyrics" / "netease" / "Artist" / "Album" / "01 Song-netease.ttml"
+            library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song-netease.ttml"
         )
         assert sidecar_path_for(audio, library, "qq") == (
-            library / ".lyrics" / "qq" / "Artist" / "Album" / "01 Song-qq.ttml"
+            library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song-qq.ttml"
         )
         from backend.lyrics.sidecar import raw_json_path_for
         assert raw_json_path_for(audio, library, "netease") == (
-            library / ".lyrics" / "netease" / "Artist" / "Album" / "01 Song.json"
+            library / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song.json"
         )
         assert raw_json_path_for(audio, library, "apple") is None
         assert raw_json_path_for(audio, library, "qq") is None

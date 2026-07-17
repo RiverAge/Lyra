@@ -394,12 +394,13 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 
 def _write_sidecar(tmp_path: Path, source: str = "apple") -> Path:
-    """在 tmp_path/.lyrics/<source>/ 下写一个 sidecar TTML。
+    """在 tmp_path/.lyrics/apple/ 下写一个 sidecar TTML（所有来源平铺）。
 
     音频路径:tmp_path/apple/Artist/Album/01 Song.m4a(生产环境布局:首段是来源目录)。
-    sidecar_path_for 会去掉首段 apple/,故 sidecar 路径体为 Artist/Album/01 Song。
+    sidecar_path_for 保留音频镜像 apple/ 首段,所有来源平铺在 .lyrics/apple/ 下
+    靠文件名后缀区分(对齐 lyric-bridge 扫描契约)。
     apple sidecar:tmp_path/.lyrics/apple/Artist/Album/01 Song.ttml
-    netease/qq sidecar:tmp_path/.lyrics/<source>/Artist/Album/01 Song-<source>.ttml
+    netease/qq sidecar:tmp_path/.lyrics/apple/Artist/Album/01 Song-<source>.ttml
     返回 audio 路径(audio 已创建,sidecar 内容 = _TTML_WITH_SPANS)。
     """
     audio_rel = Path("apple") / "Artist" / "Album" / "01 Song.m4a"
@@ -412,7 +413,7 @@ def _write_sidecar(tmp_path: Path, source: str = "apple") -> Path:
     else:
         sidecar = (
             lyrics_root
-            / source
+            / "apple"
             / "Artist"
             / "Album"
             / f"01 Song-{source}.ttml"
@@ -511,7 +512,7 @@ class TestGetRoute:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """source=netease → 读 .lyrics/netease/.../-netease.ttml。"""
+        """source=netease → 读 .lyrics/apple/.../-netease.ttml（平铺同目录）。"""
         monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
         audio = _write_sidecar(tmp_path, "netease")
         rowid = await _insert_track(store, audio)
@@ -763,7 +764,10 @@ class TestPostRoute:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """POST body source=qq → 写入 .lyrics/qq/.../01 Song-qq.ttml(路径由 source 决定)。"""
+        """POST body source=qq → 写入 .lyrics/apple/.../01 Song-qq.ttml。
+
+        平铺同目录(对齐 lyric-bridge),路径由文件名后缀决定,非 source 目录段。
+        """
         monkeypatch.setenv("LYRA_MUSIC_LIBRARY_ROOT", str(tmp_path))
         audio = _write_sidecar(tmp_path, "apple")
         rowid = await _insert_track(store, audio)
@@ -786,10 +790,10 @@ class TestPostRoute:
         assert body["source"] == "qq"
         # qq 路径带 -qq 后缀
         assert body["path"].endswith("01 Song-qq.ttml")
-        assert ".lyrics" + "\\qq\\" in body["path"] or "/.lyrics/qq/" in body["path"]
+        assert ".lyrics" + "\\apple\\" in body["path"] or "/.lyrics/apple/" in body["path"]
         # 文件已写盘
         qq_sidecar = (
-            tmp_path / ".lyrics" / "qq" / "Artist" / "Album" / "01 Song-qq.ttml"
+            tmp_path / ".lyrics" / "apple" / "Artist" / "Album" / "01 Song-qq.ttml"
         )
         assert qq_sidecar.is_file()
 

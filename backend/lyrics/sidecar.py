@@ -9,14 +9,18 @@ planned_lyrics_paths / _assert_no_doubled_source_segment），签名一致——
 
     音频      : <library_root>/apple/Artist/Album/01 Song.m4a
     apple 词 : <library_root>/.lyrics/apple/Artist/Album/01 Song.ttml
-    网易 raw : <library_root>/.lyrics/netease/Artist/Album/01 Song.json
-    网易增强 : <library_root>/.lyrics/netease/Artist/Album/01 Song-netease.ttml
-    QQ 增强  : <library_root>/.lyrics/qq/Artist/Album/01 Song-qq.ttml
+    网易增强 : <library_root>/.lyrics/apple/Artist/Album/01 Song-netease.ttml
+    网易 raw : <library_root>/.lyrics/apple/Artist/Album/01 Song.json
+    QQ 增强  : <library_root>/.lyrics/apple/Artist/Album/01 Song-qq.ttml
 
 规则：
-- ``<song>.ttml`` 是 apple 官方词；``<song>-{suffix}.ttml`` 是来源增强词，
-  与 apple 默认词并存（不覆盖）。
-- raw json 存档只有网易有（QQ 不存 raw）。
+- 所有来源 sidecar **平铺在 ``.lyrics/apple/`` 下**（音频镜像目录，保留
+  ``apple/`` 首段），靠文件名后缀区分。这是对齐 navidrome lyric-bridge
+  的扫描契约——bridge 只在该一个目录扫后缀文件。
+- ``<song>.ttml`` 是 apple 官方词（无后缀）；``<song>-{suffix}.ttml`` 是来源
+  增强词（``-netease`` / ``-qq``），与 apple 默认词并存（不覆盖）。
+- raw json 存档只有网易有（QQ 不存 raw），与同 source 的 TTML 同目录。
+- source 不进目录段，只进文件名后缀（apple 除外）。
 
 路径安全是审计重点：所有 sidecar 路径必须落在 ``library_root/.lyrics/`` 下，
 防 ``../`` 越出。用 resolve() + is_relative_to()，与 apple_routes 同模式。
@@ -125,12 +129,12 @@ def _assert_no_doubled_source_segment(
 # ---------------------------------------------------------------------------
 # sidecar 路径查询（Lyra 侧封装）
 #
-# 注意：planned_lyrics_paths（上方）把 <source>/ 段前置到完整 mirror 路径前，
-# 会保留音频的 apple/ 段（参考源设计：library_root 指向 apple 子目录时才不双写）。
-# Lyra 语义不同（AGENTS.md §3.3）：source 段替换 mirror 首段——
-# 音频 apple/Artist/Album/song.m4a → .lyrics/<source>/Artist/Album/song[-suffix].ttml，
-# 不双写 apple/。因此 sidecar_path_for 不走 planned_lyrics_paths，而是自实现
-# 替换语义。planned_lyrics_paths 作为纯函数副本保留，供 M5-A 合流收敛。
+# 注意：planned_lyrics_paths（上方死代码副本）把 <source>/ 段前置到完整
+# mirror 前，会保留音频 apple/ 段（前置语义，双写 apple/apple）。Lyra 实际
+# 落盘用 sidecar_path_for 的**平铺语义**（对齐 lyric-bridge）：所有来源平铺
+# 在 .lyrics/apple/ 下，source 只进文件名后缀。两者语义不同——sidecar_path_for
+# 不走 planned_lyrics_paths。planned_lyrics_paths 作为纯函数副本保留，当前
+# 死代码（Web 路由不调，CLI run_batch 已按 §3.5 丢弃），供未来合流收敛。
 # ---------------------------------------------------------------------------
 
 
@@ -140,41 +144,48 @@ def lyrics_root_for(library_root: Path) -> Path:
 
 
 def _sidecar_relative(track_path: Path, library_root: Path) -> Path:
-    """sidecar 相对路径体：mirror 去首段后的 Artist/Album/song（无扩展名）。
+    """sidecar 相对路径体：音频完整 mirror 去扩展名（含 apple/ 首段）。
 
-    AGENTS.md §3.3 约定音频首段是来源目录名（apple/），sidecar 用 source 段替换它，
-    故 mirror 去掉首段后剩余（Artist/Album/song）即为 sidecar 路径体。
-    mirror 只剩文件名时（音频直接在 library_root 下）返回纯文件名（无目录）。
+    对齐 navidrome lyric-bridge 的扫描目录：bridge 在
+    ``lyricsRoot + 音频所在目录``（即 ``.lyrics/`` + 音频镜像路径的 Dir）
+    里扫 ``<song>.ttml`` / ``<song>-netease.ttml`` / ``<song>-qq.ttml``。
+    故 sidecar 体必须**完整保留音频镜像**（含 ``apple/`` 首段），source 只
+    进文件名后缀，不进目录段。
+
+    mirror 只剩文件名时（音频直接在 library_root 下，无 ``apple/`` 前缀）
+    返回纯文件名（无目录）。
     """
     rel = mirror_relative_path(track_path, library_root)
-    parts = rel.parts
-    if len(parts) <= 1:
-        # 音频直接在 library_root 下：无目录可去首段，sidecar 体即文件名（去扩展）
-        return Path(track_path.stem)
-    # parts[0]=apple/ ... parts[-1]=01 Song.m4a → 去 parts[0]，文件名去扩展
-    return Path(*parts[1:-1]) / Path(parts[-1]).stem
+    return rel.with_suffix("")
 
 
 def sidecar_path_for(
     track_path: Path, library_root: Path, source: Source,
 ) -> Path:
-    """计算指定来源的 sidecar 文件路径（source 替换 mirror 首段）。
+    """计算指定来源的 sidecar 文件路径（所有来源平铺在 ``.lyrics/apple/`` 下）。
 
-    - apple → ``.lyrics/apple/<Artist/Album/song>.ttml``（默认官方词）
-    - netease → ``.lyrics/netease/<Artist/Album/song>-netease.ttml``（增强词）
-    - qq → ``.lyrics/qq/<Artist/Album/song>-qq.ttml``（增强词，无 raw）
+    对齐 navidrome lyric-bridge：bridge 只在 ``.lyrics/<音频镜像目录>`` 一个
+    目录里扫 ``<song>.ttml``（apple）/``<song>-netease.ttml``/``<song>-qq.ttml``，
+    故所有来源 sidecar 必须落在**同一目录**（音频镜像目录），靠文件名后缀区分。
 
-    source 段替换 mirror 首段（音频的 apple/ 目录名），不双写（AGENTS.md §3.3）。
-    增强词文件名用 ``-<source>.ttml`` 后缀（AGENTS.md §3.3 明确约定，别改）。
+    - apple → ``.lyrics/apple/<Artist/Album/song>.ttml``（无后缀，默认官方词）
+    - netease → ``.lyrics/apple/<Artist/Album/song>-netease.ttml``（增强词）
+    - qq → ``.lyrics/apple/<Artist/Album/song>-qq.ttml``（增强词，无 raw）
+
+    音频镜像首段 ``apple/`` 保留（来自音频路径，非 source 段）。source 不进
+    目录，只进文件名后缀（apple 除外）。增强词后缀 ``-<source>.ttml`` 是 bridge
+    扫描契约，别改。
     """
     root = library_root.resolve()
     lyrics_root = lyrics_root_for(root)
     body = _sidecar_relative(track_path, root)
+    # body 已含音频镜像首段（apple/），直接拼到 lyrics_root 下——所有来源
+    # 平铺在 .lyrics/apple/ 下（对齐 lyric-bridge 扫描目录），不再额外加 source 段。
+    base = (lyrics_root / body).with_suffix(".ttml")
     if source == "apple":
-        return (lyrics_root / "apple" / body).with_suffix(".ttml")
-    # 增强词：先建 <song>.ttml 再用 with_name 改文件名为 <song>-<source>.ttml，
-    # 避免 body.parent 在纯文件名场景退化成 "." 的边界问题。
-    base = (lyrics_root / source / body).with_suffix(".ttml")
+        return base  # <song>.ttml 无后缀
+    # 增强词：<song>-<source>.ttml（先建 <song>.ttml 再 with_name 改名，
+    # 避免 body.parent 在纯文件名场景退化成 "." 的边界问题）
     return base.with_name(f"{base.stem}-{source}.ttml")
 
 
@@ -183,14 +194,16 @@ def raw_json_path_for(
 ) -> Path | None:
     """计算 raw json 存档路径（仅 netease 有，apple/qq 返回 None）。
 
-    落在 ``.lyrics/netease/<Artist/Album/song>.json``（AGENTS.md §3.3：raw json 仅网易有）。
+    落在 ``.lyrics/apple/<Artist/Album/song>.json``（与同 source 的 TTML
+    平铺在同一镜像目录，对齐 lyric-bridge 扫描路径）。
     """
     if source != "netease":
         return None
     root = library_root.resolve()
     lyrics_root = lyrics_root_for(root)
     body = _sidecar_relative(track_path, root)
-    return (lyrics_root / "netease" / body).with_suffix(".json")
+    # body 已含 apple/ 首段，平铺在 .lyrics/apple/ 下（对齐 lyric-bridge 扫描路径）
+    return (lyrics_root / body).with_suffix(".json")
 
 
 def is_within_lyrics_root(sidecar_path: Path, library_root: Path) -> bool:
