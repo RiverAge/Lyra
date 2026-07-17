@@ -175,9 +175,16 @@ async def delete_track_sidecar(track_id: str, source: str) -> dict[str, object]:
 
     - 200 + deleted=true：已删除
     - 200 + deleted=false：不存在（幂等删除）
+    - 409：apple 默认词不可删（Apple 官方权威主歌词，删了没了；
+      要替换应重抓/重下，不从 Lyra UI 删）
     - 404：source 非法 / 路径越界
     """
     source_valid = _validate_source(source)
+    if source_valid == "apple":
+        raise HTTPException(
+            status_code=409,
+            detail="Apple 官方歌词不可删除（权威主歌词，请重新抓取/下载覆盖）",
+        )
     track_path = await _resolve_track(track_id)
     sidecar_path = _resolve_sidecar_path(track_path, source_valid)
 

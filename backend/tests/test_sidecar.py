@@ -511,6 +511,30 @@ class TestSidecarRoutes:
         assert resp.status_code == 200
         assert resp.json()["deleted"] is False
 
+    async def test_delete_apple_rejected(
+        self,
+        store: IndexStore,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """DELETE /sidecar/apple → 409 拒绝（Apple 官方词不可删，权威主歌词）。
+
+        即使文件存在也拒绝，文件原样保留。
+        """
+        rowid = await _prepare_track(store, tmp_path, monkeypatch)
+        library = tmp_path
+        audio = library / "apple" / "Artist" / "Album" / "01 Song.m4a"
+        apple_path = sidecar_path_for(audio, library, "apple")
+        write_sidecar(apple_path, "<tt>apple</tt>")
+        assert apple_path.is_file()
+
+        resp = await client.delete(f"/api/lyrics/{rowid}/sidecar/apple")
+        assert resp.status_code == 409
+        assert "不可删除" in resp.json()["detail"]
+        # 文件原样保留
+        assert apple_path.is_file()
+
     async def test_post_then_get_roundtrip(
         self,
         store: IndexStore,

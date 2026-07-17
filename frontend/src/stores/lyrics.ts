@@ -284,8 +284,13 @@ function normalizeMatchError(e: unknown): string {
  */
 function normalizeSidecarError(e: unknown): string {
   if (e && typeof e === "object" && "response" in e) {
-    const resp = (e as { response?: { status?: number; data?: unknown } }).response
+    const resp = (e as { response?: { status?: number; data?: { detail?: string } | unknown } }).response
     if (resp?.status === 404) return "sidecar 不存在"
+    if (resp?.status === 409) {
+      // 后端拒删 apple 官方词等冲突：优先用 detail 文案
+      const detail = (resp?.data as { detail?: string } | undefined)?.detail
+      return detail ?? "操作被拒绝（受保护的 sidecar）"
+    }
     if (resp?.status === 422) return "track_id 非数字"
     if (resp?.status === 400) return "未知的 source"
   }
