@@ -45,6 +45,18 @@ export const useScannerStore = defineStore("scanner", () => {
   // SSE 实例（不参与响应式，用 let 局部变量管理）
   let eventSource: EventSource | null = null
 
+  /**
+   * 扫描完成事件携带的 stats 回调。
+   * 后端完成事件会带 stats（track_count/album_count/...），由调用方
+   * （LibraryView）注册：收到后填进 libraryStore.stats，省一次 HTTP。
+   * 默认 noop，避免 store 间横向耦合（scannerStore 不直接 import libraryStore）。
+   */
+  let _onStats: (stats: Record<string, unknown>) => void = () => {}
+
+  function setOnStats(cb: (stats: Record<string, unknown>) => void): void {
+    _onStats = cb
+  }
+
   const isScanning = computed(() => state.value === "scanning")
   const isIdle = computed(() => state.value === "idle")
   const isError = computed(() => state.value === "error")
@@ -118,16 +130,18 @@ export const useScannerStore = defineStore("scanner", () => {
           connected.value = true
           return
         case "init": {
-          // init 事件含 state/count/folder_count/total/timestamp
+          // init 事件含 state/count/folder_count/total/timestamp。
+          // 注意：startedAt 不从此处取——init 的 timestamp 是「SSE 连接此刻」，
+          // 不是扫描真正起点。扫描起点只认 refreshStatus() 拿到的后端
+          // scanner_status.started_at（scan_all 启动时写入的真值）。
+          // 否则刷新页面/SSE 重连后 elapsed 会从「重连那一刻」重新算，
+          // 看着像「扫描才跑了 20s」（实际已跑几分钟）。
           if (typeof data.state === "string") {
             state.value = data.state as ScannerState
           }
           if (typeof data.count === "number") count.value = data.count
           if (typeof data.folder_count === "number") folderCount.value = data.folder_count
           if (typeof data.total === "number") totalFiles.value = data.total
-          if (typeof data.timestamp === "number") {
-            startedAt.value = startedAt.value ?? data.timestamp
-          }
           return
         }
         default:
@@ -140,14 +154,17 @@ export const useScannerStore = defineStore("scanner", () => {
     if (typeof data.count === "number") count.value = data.count
     if (typeof data.folder_count === "number") folderCount.value = data.folder_count
     if (typeof data.total === "number") totalFiles.value = data.total
-    if (typeof data.timestamp === "number" && startedAt.value === null) {
-      startedAt.value = data.timestamp
-    }
+    // 实时事件的 timestamp 是「广播此刻」，不是扫描起点，不用它覆盖 startedAt
+    // （扫描起点只由 refreshStatus 的后端 started_at 赋值，见 init 分支注释）。
     if (typeof data.state === "string") {
       state.value = data.state as ScannerState
       if (data.state === "completed" || data.state === "idle") {
         lastScannedAt.value =
           typeof data.timestamp === "number" ? data.timestamp : Date.now()
+        // 完成事件带 stats：回调填 libraryStore.stats（省一次 HTTP 全表聚合）。
+        if (data.state === "completed" && data.stats && typeof data.stats === "object") {
+          _onStats(data.stats as Record<string, unknown>)
+        }
       }
     }
   }
@@ -231,5 +248,6 @@ export const useScannerStore = defineStore("scanner", () => {
     startProgress,
     stopProgress,
     trigger,
+    setOnStats,
   }
 })

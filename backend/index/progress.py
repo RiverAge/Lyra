@@ -118,19 +118,32 @@ class ScannerProgress:
         for q in dead_queues:
             self.unregister(q)
 
-    async def broadcast_scan_complete(self, count: int, folder_count: int, total: int = 0) -> None:
-        """扫描完成时强制发送最终事件（不限流）。"""
+    async def broadcast_scan_complete(
+        self,
+        count: int,
+        folder_count: int,
+        total: int = 0,
+        stats: dict[str, object] | None = None,
+    ) -> None:
+        """扫描完成时强制发送最终事件（不限流）。
+
+        Args:
+            stats: 扫描完成时的库聚合统计（track_count/album_count/
+                total_duration_sec/lossless_ratio）。由调用方用 store.library_stats()
+                算好后传入，前端收到完成事件直接填统计卡，省一次 HTTP 全表聚合
+                请求。None=不附 stats（前端统计卡不随完成事件更新）。
+        """
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
-        data = json.dumps(
-            {
-                "count": count,
-                "folder_count": folder_count,
-                "total": total,
-                "timestamp": now_ms,
-                "state": "completed",
-            },
-            ensure_ascii=False,
-        )
+        payload: dict[str, object] = {
+            "count": count,
+            "folder_count": folder_count,
+            "total": total,
+            "timestamp": now_ms,
+            "state": "completed",
+        }
+        if stats is not None:
+            payload["stats"] = stats
+        data = json.dumps(payload, ensure_ascii=False)
         message = f"data: {data}\n\n"
 
         dead_queues: list[asyncio.Queue[str]] = []

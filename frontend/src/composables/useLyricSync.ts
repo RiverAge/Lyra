@@ -73,11 +73,17 @@ function parseP(p: Element): {
   }
 }
 
-/** 读元素内所有 <span begin end> → LyricSpan[]（逐字时间轴）。无文本 span 过滤掉。 */
+/** 读元素内所有 <span begin end> → LyricSpan[]（逐字时间轴）。无文本 span 过滤掉。
+ *
+ * 注意：span text 只 strip 首尾换行/制表符，**不 trim 普通空格**。
+ * 逐字歌词（尤其 QQ QRC 拉丁字母）每个单词 span 尾随空格是词间分隔，
+ * trim 空格会把 "Fiecare " "clipa " "pictata-" 拼成 "Fiecareclipapictata-"（黏连）。
+ * 中文逐字无词间空格，不受影响。
+ */
 function parseSpans(el: Element): LyricSpan[] {
   return Array.from(el.getElementsByTagName("span"))
     .map((s) => ({
-      text: s.textContent?.trim() ?? "",
+      text: (s.textContent ?? "").replace(/^[\r\n\t]+|[\r\n\t]+$/g, ""),
       beginMs: parseTtmlTime(s.getAttribute("begin")),
       endMs: parseTtmlTime(s.getAttribute("end")),
     }))

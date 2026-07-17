@@ -6,26 +6,39 @@
         曲库
       </h1>
       <p class="text-sm text-secondary">
-        音乐元数据与歌词管理工具 · 当前共 {{ totalText }} 首曲目
+        音乐元数据与歌词管理工具
       </p>
-      <div class="mt-3.5 flex items-center gap-4 text-xs text-tertiary">
+      <div class="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-tertiary">
         <span class="pill"><span class="dot" />后端已连接</span>
         <span class="meta-item"><b>扫描</b> {{ scanStatusText }}</span>
         <span class="meta-item"><b>转码</b> ALAC → Opus 实时</span>
+        <!-- 库概览：原四格统计卡内联到此行。数字滚动（useCountUp）：
+             扫描完成 SSE 带 stats 进来时旧值→新值 ease-out 滚动。
+             首屏加载直接显示初值不动画。无 stats（未加载）时不显示本段。 -->
+        <template v-if="hasStats">
+          <span class="meta-sep" />
+          <span class="meta-item">
+            <b>曲目</b>
+            <span class="tabular-nums text-secondary">{{ trackCount.toLocaleString("en-US") }}</span>
+          </span>
+          <span class="meta-item">
+            <b>专辑</b>
+            <span class="tabular-nums text-secondary">{{ albumCount }}</span>
+          </span>
+          <span class="meta-item">
+            <b>时长</b>
+            <span class="tabular-nums text-secondary">{{ durationLabel }}</span>
+          </span>
+          <span class="meta-item">
+            <b>无损</b>
+            <span class="tabular-nums text-secondary">{{ losslessPct }}%</span>
+          </span>
+        </template>
       </div>
     </div>
 
-    <!-- 统计卡 -->
-    <StatsCards :stats="libraryStore.stats" class="mb-6" />
-
     <!-- 扫描进度（自带 card，scanning 时展开） -->
     <ScanProgress v-if="showScanner" class="mb-6" />
-
-    <!-- 操作工具条 -->
-    <div class="toolbar-row">
-      <div class="flex-1" />
-      <BaseButton variant="ghost" size="sm" icon="RefreshCw" icon-only title="刷新" @click="reload" />
-    </div>
 
     <!-- 表格 -->
     <TrackTable
@@ -60,17 +73,19 @@
 </template>
 
 <script setup lang="ts">
+import type { LibraryStats } from "@/apis/library"
+import { useCountUp } from "@/composables/useCountUp"
 import { useLibraryStore } from "@/stores/library"
 import { useScannerStore } from "@/stores/scanner"
-import BaseButton from "@/components/ui/BaseButton.vue"
-import StatsCards from "@/components/library/StatsCards.vue"
 import TrackTable from "@/components/library/TrackTable.vue"
 import ScanProgress from "@/components/scanner/ScanProgress.vue"
 
 /**
  * 曲库首页（B 布局重写）
  *
- * 布局自上而下：页头 → 统计卡 → 扫描进度 → 工具条(刷新) → 表格 → 分页
+ * 布局自上而下：页头(含库概览 inline) → 扫描进度 → 表格 → 分页
+ * - 页头 meta 行内联四项统计（曲目/专辑/时长/无损占比），数字滚动
+ *   （useCountUp）；扫描完成 SSE 带 stats 进来时旧值→新值 ease-out 滚动
  * - onMounted：loadPage(1) + loadStats()（统计与列表独立加载）
  * - 全局搜索走 ⌘K SearchModal（App.vue 挂载），列表只做分页浏览
  * - 点击表格行 → /track/:id
@@ -79,6 +94,12 @@ import ScanProgress from "@/components/scanner/ScanProgress.vue"
 const libraryStore = useLibraryStore()
 const scannerStore = useScannerStore()
 const router = useRouter()
+
+// 扫描完成事件带 stats 回调：后端算好 stats 推过来，直接填 libraryStore.stats，
+// 省一次 /library/stats HTTP 全表聚合请求。
+scannerStore.setOnStats((s) => {
+  libraryStore.setStats(s as unknown as LibraryStats)
+})
 
 onMounted(() => {
   void libraryStore.loadPage(1)
@@ -93,6 +114,9 @@ onMounted(() => {
   // （"点 Settings 再回来才有"是因为 Settings 的 refreshStatus 晚一拍
   // 撞上 scanning；F5 又消失是同样死锁重演）。这里在 Library 级开 SSE 打破死锁。
   // refreshStatus 仍调一次拿即时快照（SSE init 之前先用上）。
+  //
+  // 扫描完成事件里后端会带 stats（避免前端再发一次 HTTP 全表聚合），
+  // scannerStore 收到后填 libraryStore.stats，见 handleSseData completed 分支。
   void scannerStore.refreshStatus()
   scannerStore.startProgress()
 })
@@ -109,7 +133,23 @@ const scanStatusText = computed(() =>
   scannerStore.isScanning ? "进行中" : "空闲",
 )
 
-const totalText = computed(() => libraryStore.total.toLocaleString("en-US"))
+// ---- 库概览（页头内联）----
+const hasStats = computed(() => libraryStore.stats !== null)
+const trackCount = useCountUp(() => libraryStore.stats?.track_count ?? 0)
+const albumCount = useCountUp(() => libraryStore.stats?.album_count ?? 0)
+const totalDurationSec = useCountUp(() => libraryStore.stats?.total_duration_sec ?? 0)
+const losslessPct = useCountUp(() =>
+  libraryStore.stats ? Math.round(libraryStore.stats.lossless_ratio * 100) : 0,
+)
+
+// 总时长格式化：秒 → 选合适单位
+const durationLabel = computed(() => {
+  const sec = totalDurationSec.value
+  if (!sec) return "0m"
+  const h = sec / 3600
+  if (h >= 1) return `${h.toFixed(1)}h`
+  return `${Math.round(sec / 60)}m`
+})
 
 const pagerText = computed(() => {
   const limit = libraryStore.limit
@@ -128,10 +168,22 @@ async function reload(): Promise<void> {
 </script>
 
 <style scoped>
-/* meta 后代 b 加粗 */
+/* meta-item：label(b) + 值 inline，b 后留缝 */
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .meta-item b {
   color: var(--theme-text-secondary);
   font-weight: 500;
+}
+
+/* meta 行分隔竖线：连接状态段与库概览段 */
+.meta-sep {
+  width: 1px;
+  height: 12px;
+  background-color: var(--theme-border-default);
 }
 
 /* pill 状态点 */
@@ -151,16 +203,6 @@ async function reload(): Promise<void> {
   height: 6px;
   border-radius: 50%;
   background-color: var(--theme-success);
-}
-
-/* 筛选条 + 右侧操作一行：FilterBar 用 flex-1 占满，页面级 margin/border 在此定义 */
-.toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--theme-border-default);
 }
 
 /* 分页按钮：多伪类组合（:hover:not(:disabled):not(.active)）保留 scoped */

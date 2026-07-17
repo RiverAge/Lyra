@@ -71,6 +71,15 @@ export const useLibraryStore = defineStore("library", () => {
     statsLoading.value = false
   }
 
+  /**
+   * 直接设置 stats（SSE 扫描完成事件带 stats 回调用）。
+   * 跳过 HTTP——后端完成事件已算好 stats 推过来，省一次全表聚合请求。
+   */
+  function setStats(s: LibraryStats): void {
+    stats.value = s
+    statsLoading.value = false
+  }
+
   // 重新加载当前页 + 刷新统计
   async function reload(): Promise<void> {
     await loadPage(page.value, limit.value)
@@ -112,6 +121,7 @@ export const useLibraryStore = defineStore("library", () => {
     totalPages,
     loadPage,
     loadStats,
+    setStats,
     reload,
     nextPage,
     prevPage,

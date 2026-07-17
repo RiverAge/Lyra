@@ -243,10 +243,17 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
                 return
         logger.info("Starting initial scan of library...")
         result = await scanner.scan_all()
+        # 扫描刚写完库，算一次 stats 既塞进完成事件（前端零额外请求拿新
+        # 统计），又预热 library_routes 的 stats 缓存（扫完首次 HTTP 也瞬命中）。
+        stats = await scanner._store.library_stats()
+        from backend.server.library_routes import set_stats_cache
+
+        set_stats_cache(stats)
         await progress.broadcast_scan_complete(
             result["files_processed"],
             result["folders_processed"],
             result["total_files"],
+            stats=stats,
         )
         logger.info(
             "Initial scan complete: %d files indexed, %d deleted, %d folders, %d total",

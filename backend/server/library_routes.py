@@ -164,6 +164,17 @@ async def library_stats() -> dict:
     return result
 
 
+def set_stats_cache(result: dict) -> None:
+    """外部刷新 stats 缓存（扫描完成时调用）。
+
+    扫描刚写完库，stats 数据是新的——此刻算一次 stats 既用于塞进 SSE
+    完成事件（前端零额外请求拿新统计），又把 HTTP /library/stats 的缓存
+    预热（扫完首次 HTTP 也瞬命中，不必再全表扫）。
+    """
+    _stats_cache.value = result
+    _stats_cache.at = time.monotonic()
+
+
 @library_router.get("/library/search")
 async def search_library(
     q: str = Query(default="", description="搜索关键词（跨 title/artist/album 模糊匹配）"),

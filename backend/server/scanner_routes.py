@@ -223,10 +223,29 @@ async def scanner_trigger():
 
 
 async def _run_scan(scanner: object) -> None:
-    """后台执行全量扫描。"""
+    """后台执行全量扫描。
+
+    扫完发完成事件（带 stats），与 _initial_scan 对齐：前端收到即可填统计卡，
+    不必再发一次 HTTP 全表聚合请求。
+    """
     try:
         # scanner is actually a Scanner instance; use Any to bypass type narrowing
         s: Any = scanner
-        await s.scan_all()
+        result = await s.scan_all()
+        progress = get_progress()
+        if progress is not None:
+            stats = await s._store.library_stats()
+            from backend.server.library_routes import set_stats_cache
+
+            set_stats_cache(stats)
+            await progress.broadcast_scan_complete(
+                result["files_processed"],
+                result["folders_processed"],
+                result["total_files"],
+                stats=stats,
+            )
     except Exception:
         logger.exception("手动触发全量扫描失败")
+        progress = get_progress()
+        if progress is not None:
+            await progress.broadcast_scan_complete(0, 0, 0)
