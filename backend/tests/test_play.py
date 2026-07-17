@@ -335,18 +335,26 @@ async def test_play_invalid_track_id(
 async def test_play_library_root_not_configured(
     store: IndexStore, client: AsyncClient, monkeypatch  # type: ignore[no-untyped-def]
 ) -> None:
-    """library_root 未配置时返回 503。"""
-    monkeypatch.delenv("LYRA_MUSIC_LIBRARY_ROOT", raising=False)
+    """library_root 未配置时返回 503。
 
-    rowid = await store.insert_track(
-        title="Test",
-        artist="A",
-        path="/some/path.m4a",
-        codec="alac",
-        duration=200000,
-    )
+    用 patch get_settings 而非 monkeypatch.delenv：pydantic-settings 的
+    env_file=".env" 会在 delenv 后仍从 .env 读到 LYRA_MUSIC_LIBRARY_ROOT，
+    导致 root 非空、走到文件存在性检查返回 404 而非 503。直接让
+    music_library_path() 返回 None 才能真正模拟「未配置」。
+    """
+    from types import SimpleNamespace
 
-    resp = await client.get(f"/api/play/{rowid}")
+    fake_settings = SimpleNamespace(music_library_path=lambda: None)
+    with patch("backend.play.stream.get_settings", return_value=fake_settings):
+        rowid = await store.insert_track(
+            title="Test",
+            artist="A",
+            path="/some/path.m4a",
+            codec="alac",
+            duration=200000,
+        )
+
+        resp = await client.get(f"/api/play/{rowid}")
     assert resp.status_code == 503
     assert "Library root not configured" in resp.text
 
