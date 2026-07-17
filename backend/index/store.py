@@ -105,6 +105,11 @@ class IndexStore:
         """
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = sqlite3.Row
+            # WAL：写不阻塞读、commit 不强制 fsync，扫描期 22966 次 upsert
+            # 吞吐显著提升（FULL→NORMAL；WAL 下 synchronous=NORMAL 仍安全，
+            # 最多丢最后一个未 checkpoint 的事务，Lyra 索引数据可重建）。
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA synchronous=NORMAL")
             await db.executescript(_SCHEMA_SQL)
             # 增量迁移：补列（CREATE TABLE IF NOT EXISTS 对已存在表不重建）
             await self._migrate_scanner_status_total_files(db)
@@ -440,6 +445,28 @@ class IndexStore:
                 "INSERT OR IGNORE INTO scanner_status "
                 "(id, state, count, folder_count, total_files) "
                 "VALUES (1, 'idle', 0, 0, 0)"
+            )
+            await db.commit()
+
+    async def clear_orphan_scanning_state(self) -> None:
+        """启动时清理孤儿 scanning 状态。
+
+        进程被强杀（SIGKILL/OOM）时 scan_all 末尾的 state=idle 没执行，
+        scanner_status 会卡在 scanning。进程刚启动 = 不可能在扫，强制置回
+        idle，否则 scanner_routes 的手动触发会因 state==scanning 返回 409
+        被挡住。自动续扫（_initial_scan）不走该检查不受影响，但孤儿态
+        期间手动按钮失效——这里填掉这个真实小坑。
+
+        记 error_message 便于排查（正常停止不会有这条）。
+        """
+        await self._ensure_scanner_status_row()
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE scanner_status "
+                "SET state = 'idle', "
+                "    scan_type = NULL, "
+                "    error_message = 'recovered from orphan scanning state' "
+                "WHERE id = 1 AND state = 'scanning'"
             )
             await db.commit()
 

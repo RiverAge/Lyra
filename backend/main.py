@@ -94,6 +94,10 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN20
         db_path.parent.mkdir(parents=True, exist_ok=True)
         store = IndexStore(db_path)
         await store.init_schema()
+        # 孤儿状态恢复：上次进程被强杀时 state 可能卡在 scanning，
+        # 进程刚启动强制置回 idle（否则手动触发会被 409）。自动续扫
+        # 不受影响，但孤儿态期间手动按钮失效——见 store.clear_orphan_scanning_state。
+        await store.clear_orphan_scanning_state()
         set_store(store)
         logger.info("Database store initialized successfully.")
     except Exception:

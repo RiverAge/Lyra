@@ -323,8 +323,15 @@ class Scanner:
             logger.warning("无法读取目录: %s", folder_path_str)
             return 0
 
-        processed = 0
+        # 收集待处理文件：mtime 二次过滤（已入库且 mtime 未变的跳过）。
+        # 这一步串行（DB 读快，每文件几 ms），但筛掉大部分文件后并发阶段
+        # 才是 mutagen 大头——避免对无需重读的文件也并发开 mutagen。
+        to_scan: list[Path] = []
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        # mtime 跳过的文件数：scan_all 的进度计数口径要求"已处理"包含
+        # 跳过=无需处理的文件（确保扫描完成时 count == total_files），
+        # 所以这里单独计，返回时加回 processed。
+        skipped_mtime = 0
 
         for entry in entries:
             if not entry.is_file():
@@ -343,11 +350,37 @@ class Scanner:
                 db_mtime = existing["mtime"]
                 if file_mtime_ms <= db_mtime:
                     logger.debug("mtime 未变，跳过: %s", entry_path_str)
-                    processed += 1
+                    skipped_mtime += 1
                     continue
 
-            # 读标签 + 写库
-            tags = await loop.run_in_executor(None, _read_audio_tags, entry)
+            to_scan.append(entry)
+
+        if not to_scan:
+            # 全部 mtime 跳过或无音频文件——仍需更新 folder watermark。
+            # 返回 skipped_mtime 维持 scan_all 进度计数口径（跳过=已处理）。
+            await self._store.set_folder_hash(folder_path_str, current_hash)
+            return skipped_mtime
+
+        # 并发读 mutagen（CPU+IO 重叠）。run_in_executor(None,...) 默认线程池
+        # 可并行 N 个——GIL 下 mutagen 多为 IO（seek 读 header）+ 部分 C 解析，
+        # 线程并发能重叠 IO 等待。写库保持串行（下方循环），避免 SQLite 并发写锁。
+        # 并发数受默认 ThreadPoolExecutor 限制（通常 min(32, cpu+4)），足够。
+        read_tasks = [
+            loop.run_in_executor(None, _read_audio_tags, entry)
+            for entry in to_scan
+        ]
+        read_results = await asyncio.gather(*read_tasks, return_exceptions=True)
+
+        processed = 0
+        for entry, result in zip(to_scan, read_results):
+            entry_path_str = str(entry).replace("\\", "/")
+            if isinstance(result, Exception):
+                logger.warning(
+                    "读取标签异常，跳过: %s (%s)", entry_path_str, result
+                )
+                processed += 1
+                continue
+            tags = result
             if tags is None:
                 logger.debug("无法读取标签，跳过: %s", entry_path_str)
                 processed += 1
@@ -369,7 +402,7 @@ class Scanner:
         # 更新 watermark
         await self._store.set_folder_hash(folder_path_str, current_hash)
 
-        return processed
+        return processed + skipped_mtime
 
     async def scan_all(self) -> dict[str, int]:
         """全量扫描入口。
