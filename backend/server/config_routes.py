@@ -14,6 +14,7 @@ import logging
 
 from fastapi import APIRouter
 
+from backend._version import get_version
 from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -29,12 +30,14 @@ async def get_config() -> dict:
     music_library_root / static_dir / log_dir 可能为 None（未配置）。
 
     Returns:
-        {music_library_root, db_path, static_dir, log_level, log_dir,
+        {version, music_library_root, db_path, static_dir, log_level, log_dir,
          log_max_bytes, log_backup_count, library_configured}
+        version: 镜像版本号（CI 构建期注入的 git tag，设置页展示用）。
         library_configured: music_library_root 是否已配置（非 None）。
     """
     s = get_settings()
     return {
+        "version": get_version(),
         "music_library_root": s.music_library_root,
         "db_path": s.db_path,
         "static_dir": s.static_dir,

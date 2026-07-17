@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from backend._version import get_version
 from backend.config import get_settings
 from backend.index.progress import ScannerProgress, set_progress
 from backend.index.scanner import Scanner, set_scanner
@@ -133,7 +134,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]  # noqa: ANN20
         scanner.set_on_progress(_on_scan_progress)
 
         # -- 文件监听器初始化 --
-        watcher = Watcher(scanner, library_path)
+        watcher = Watcher(scanner, library_path, store)
         await watcher.start()
 
         # -- 初始扫描（非阻塞） --
@@ -237,7 +238,7 @@ async def _initial_scan(scanner: Scanner, progress: ScannerProgress) -> None:
 app = FastAPI(
     title="Lyra",
     description="音乐元数据与歌词管理 Web 应用",
-    version="0.1.0",
+    version=get_version(),
     lifespan=lifespan,
 )
 

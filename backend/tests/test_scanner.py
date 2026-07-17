@@ -361,7 +361,12 @@ async def test_is_audio_file() -> None:
 
 
 async def test_scan_folder_skip_on_hash_match(store: IndexStore, tmp_path: Path) -> None:
-    """folder hash 未变时 scan_folder 跳过，不重扫。"""
+    """folder hash 未变时 scan_folder 跳过，不重扫。
+
+    watermark 的 key 必须用 resolve 后的路径——与 scanner.scan_folder 内部
+    `folder_path.resolve()` 对齐。Windows 上未 resolve 的 str 可能与 resolve
+    后大小写不同（NTFS 不区分但字符串区分），导致存/读 key 错位、永远跳不过。
+    """
     from backend.index.scanner import Scanner
 
     folder = tmp_path / "skip_test"
@@ -370,9 +375,11 @@ async def test_scan_folder_skip_on_hash_match(store: IndexStore, tmp_path: Path)
     f = folder / "01.m4a"
     f.write_bytes(b"\x00" * 100)
 
-    # 预写 watermark
-    h = _compute_folder_hash(folder)
-    await store.set_folder_hash(str(folder).replace("\\", "/"), h)
+    # 预写 watermark——key 用 resolve 后路径，对齐 scanner 内部行为
+    h = _compute_folder_hash(folder.resolve())
+    await store.set_folder_hash(
+        str(folder.resolve()).replace("\\", "/"), h,
+    )
 
     scanner = Scanner(store, tmp_path)
     processed = await scanner.scan_folder(folder)
@@ -821,4 +828,176 @@ async def test_progress_broadcast_scan_complete_includes_total() -> None:
     assert data["total"] == 1000
     assert data["state"] == "completed"
 
-    progress.unregister(queue)
+
+# ============================================================================
+# 批量 upsert 测试（单事务 executemany，ON CONFLICT 更新）
+# ============================================================================
+
+
+def _sample_row(path: str, *, title: str = "T", artist: str = "A") -> dict:
+    """构造一条 batch 用的 track dict（含 _BATCH_COLUMNS 子集）。"""
+    return {
+        "title": title,
+        "artist": artist,
+        "album_artist": artist,
+        "album": "Album",
+        "path": path,
+        "track": 1,
+        "disc": 1,
+        "year": 2024,
+        "duration": 200000,
+        "bitrate": 256000,
+        "codec": "alac",
+        "samplerate": 44100,
+        "tag_map": "{}",
+        "mtime": 1750000000000,
+        "size": 1000,
+        "has_cover": 1,
+        "created_at": 1750000000000,
+        "updated_at": 1750000000000,
+    }
+
+
+async def test_upsert_tracks_batch_inserts_all(store: IndexStore) -> None:
+    """批量插入 N 行 → count_tracks == N，字段读回正确。"""
+    rows = [
+        _sample_row(f"/music/batch/{i:02d}.m4a", title=f"Song{i}") for i in range(5)
+    ]
+    n = await store.upsert_tracks_batch(rows)
+    assert n == 5
+    assert await store.count_tracks() == 5
+
+    # 抽查首尾
+    r0 = await store.get_track_by_path("/music/batch/00.m4a")
+    r4 = await store.get_track_by_path("/music/batch/04.m4a")
+    assert r0["title"] == "Song0"
+    assert r4["title"] == "Song4"
+
+
+async def test_upsert_tracks_batch_conflict_updates(store: IndexStore) -> None:
+    """同 path 二次 batch → ON CONFLICT 更新而非插入新行，count 不变。"""
+    rows = [_sample_row("/music/batch/up.m4a", title="Old")]
+    await store.upsert_tracks_batch(rows)
+    assert await store.count_tracks() == 1
+
+    # 第二批同 path 不同 title → 更新
+    rows2 = [_sample_row("/music/batch/up.m4a", title="New")]
+    await store.upsert_tracks_batch(rows2)
+    assert await store.count_tracks() == 1  # 没新增
+    r = await store.get_track_by_path("/music/batch/up.m4a")
+    assert r["title"] == "New"
+
+
+async def test_upsert_tracks_batch_empty_noop(store: IndexStore) -> None:
+    """空 list → 不报错，count 不变。"""
+    n = await store.upsert_tracks_batch([])
+    assert n == 0
+    assert await store.count_tracks() == 0
+
+
+async def test_upsert_tracks_batch_missing_nullable_cols(store: IndexStore) -> None:
+    """缺失可空列（track/disc/year/bitrate/samplerate）→ 填 None 不报错。"""
+    rows = [{
+        "title": "T", "artist": "A", "album_artist": "A", "album": "Al",
+        "path": "/music/batch/partial.m4a", "duration": 100000,
+        "codec": "flac", "tag_map": "{}", "mtime": 1750000000000,
+        "size": 500, "has_cover": 0,
+        "created_at": 1750000000000, "updated_at": 1750000000000,
+    }]
+    await store.upsert_tracks_batch(rows)
+    r = await store.get_track_by_path("/music/batch/partial.m4a")
+    assert r is not None
+    assert r["track"] is None  # 缺失列填 None（可空）
+    assert r["title"] == "T"
+
+
+# ============================================================================
+# watcher 退避测试（scan_all 进行中时 watcher 不抢锁）
+# ============================================================================
+
+
+async def test_watcher_backs_off_when_scan_all_running(
+    store: IndexStore, tmp_path: Path,
+) -> None:
+    """scanner_status=scanning 时 watcher._scan_affected 退避，不调 scan_folder。
+
+    回归：startup _initial_scan 全量扫描进行中，watcher 触发增量扫会和全量扫
+    抢 SQLite 写锁抛 database is locked。修法是 watcher 查 scanner_status，
+    scanning 时退避让路。本测试用 spy 验证 scan_folder 没被调。
+    """
+    from backend.index.scanner import Scanner
+    from backend.index.watcher import Watcher
+
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    folder = library_root / "Album"
+    folder.mkdir()
+    (folder / "01.m4a").write_bytes(b"\x00")
+
+    scanner = Scanner(store, library_root)
+    watcher = Watcher(scanner, library_root, store)
+
+    # 标记全量扫描进行中（模拟 startup _initial_scan）
+    await store.set_scanner_status(state="scanning", scan_type="full")
+
+    # spy：记录 scan_folder 是否被调
+    called = {"count": 0}
+    orig = scanner.scan_folder
+
+    async def spy(f: Path) -> int:
+        called["count"] += 1
+        return await orig(f)
+
+    scanner.scan_folder = spy  # type: ignore[method-assign]
+
+    # _running=False 让退避后 retry 不执行（避免套娃 + 避免 15s sleep）
+    watcher._running = False  # noqa: SLF001
+    # monkeypatch sleep 为 no-op（不等真实 15s）
+    import backend.index.watcher as wmod
+
+    orig_sleep = wmod.asyncio.sleep
+
+    async def fake_sleep(_s: float) -> None:
+        return None
+
+    wmod.asyncio.sleep = fake_sleep  # type: ignore[assignment]
+    try:
+        await watcher._scan_affected({folder})  # noqa: SLF001
+    finally:
+        wmod.asyncio.sleep = orig_sleep  # type: ignore[assignment]
+
+    assert called["count"] == 0  # scanning 退避，未触 scan_folder
+
+
+async def test_watcher_scans_when_idle(
+    store: IndexStore, tmp_path: Path,
+) -> None:
+    """scanner_status=idle 时 watcher 正常扫描（不退避）。"""
+    from backend.index.scanner import Scanner
+    from backend.index.watcher import Watcher
+
+    library_root = tmp_path / "music"
+    library_root.mkdir()
+    folder = library_root / "Album"
+    folder.mkdir()
+    (folder / "01.m4a").write_bytes(b"\x00")
+
+    scanner = Scanner(store, library_root)
+    watcher = Watcher(scanner, library_root, store)
+
+    # idle 状态（或未写入 = None）
+    await store.set_scanner_status(state="idle", scan_type=None)
+
+    called = {"count": 0}
+    orig = scanner.scan_folder
+
+    async def spy(f: Path) -> int:
+        called["count"] += 1
+        return await orig(f)
+
+    scanner.scan_folder = spy  # type: ignore[method-assign]
+
+    # _running=True 让循环执行（默认 False 会在循环入口 break）
+    watcher._running = True  # noqa: SLF001
+    await watcher._scan_affected({folder})  # noqa: SLF001
+    assert called["count"] == 1  # idle 正常扫

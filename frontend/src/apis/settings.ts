@@ -18,6 +18,8 @@ export interface AppSettings {
 
 /** 运行期环境配置（只读，LYRA_* 环境变量解析值） */
 export interface AppConfig {
+  /** 镜像版本号（CI 构建期注入的 git tag，设置页展示用） */
+  version: string
   music_library_root: string | null
   db_path: string
   static_dir: string | null

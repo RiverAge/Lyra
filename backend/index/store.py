@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -105,6 +107,21 @@ class IndexStore:
     def __init__(self, db_path: Path) -> None:
         self._db_path = str(db_path)
 
+    @asynccontextmanager
+    async def _connect(self) -> AsyncGenerator[aiosqlite.Connection, None]:
+        """打开连接 + 设 busy_timeout，统一所有 DB 访问入口。
+
+        WAL 下读不阻塞写、写不阻塞读，但**写写仍互斥**——多连接同时写
+        （scan_all 逐文件 upsert + watcher 增量 upsert）抢写锁时，默认
+        ``busy_timeout=0`` 会立刻抛 ``database is locked`` 而非等待重试。
+        设 5s busy_timeout 让抢锁的连接等待对方释放而非直接报错。
+        同时每连接设 row_factory（与原 `async with aiosqlite.connect` 一致）。
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = sqlite3.Row
+            await db.execute("PRAGMA busy_timeout=5000")
+            yield db
+
     # ---- schema ----
 
     async def init_schema(self) -> None:
@@ -114,11 +131,11 @@ class IndexStore:
         所有索引/约束直接体现在 DDL 中（审计规则 §3.3）。
         对已存在表补列用 ALTER TABLE（幂等：检测列存在性后 ALTER）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
-            db.row_factory = sqlite3.Row
+        async with self._connect() as db:
             # WAL：写不阻塞读、commit 不强制 fsync，扫描期 22966 次 upsert
             # 吞吐显著提升（FULL→NORMAL；WAL 下 synchronous=NORMAL 仍安全，
             # 最多丢最后一个未 checkpoint 的事务，Lyra 索引数据可重建）。
+            # journal_mode 是 DB 持久属性，写一次即可；这里幂等重设无害。
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("PRAGMA synchronous=NORMAL")
             await db.executescript(_SCHEMA_SQL)
@@ -147,7 +164,7 @@ class IndexStore:
 
     async def count_tracks(self) -> int:
         """返回 tracks 表总行数。"""
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute("SELECT COUNT(*) AS cnt FROM tracks")
             row = await cursor.fetchone()
@@ -166,7 +183,7 @@ class IndexStore:
         lossless_codecs = ("ALAC", "FLAC", "WAV", "APE", "DSD")
         placeholders = ",".join("?" for _ in lossless_codecs)
 
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 f"""
@@ -235,7 +252,7 @@ class IndexStore:
         where_sql, params = self._build_track_filters(
             artist=artist, album=album, codec=codec
         )
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 f"SELECT COUNT(*) AS cnt FROM tracks {where_sql}",
@@ -262,7 +279,7 @@ class IndexStore:
             artist=artist, album=album, codec=codec
         )
         params = [*params, limit, offset]
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks {where_sql} ORDER BY id ASC LIMIT ? OFFSET ?",
@@ -286,11 +303,40 @@ class IndexStore:
         Returns:
             sqlite3.Row 列表，按 id 升序。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks ORDER BY id ASC LIMIT ? OFFSET ?",
                 (limit, offset),
+            )
+            rows = await cursor.fetchall()
+            return list(rows)
+
+    async def search_tracks(self, q: str, *, limit: int = 10) -> list[sqlite3.Row]:
+        """跨 title/artist/album 模糊搜索（全局 ⌘K 搜索框用）。
+
+        单个关键词同时匹配三个字段（OR LIKE），命中任一即返回。
+        用 LIKE '%q%'（非前缀索引扫描）——2 万行全表扫约几十 ms，
+        搜索框只取前 N 条，可接受。若日后曲库涨到十万级再考虑 FTS5。
+
+        Args:
+            q: 搜索关键词（已 trim；空串返回 []，不查 DB）。
+            limit: 返回条数上限，默认 10（搜索框下拉只需几条）。
+
+        Returns:
+            sqlite3.Row 列表（列表列集，无 tag_map），按 id 升序。
+        """
+        q = q.strip()
+        if not q:
+            return []
+        pattern = f"%{q}%"
+        async with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            cursor = await db.execute(
+                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks "
+                "WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? "
+                "ORDER BY id ASC LIMIT ?",
+                (pattern, pattern, pattern, limit),
             )
             rows = await cursor.fetchall()
             return list(rows)
@@ -301,7 +347,7 @@ class IndexStore:
         Returns:
             sqlite3.Row 或 None（不存在时）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 "SELECT * FROM tracks WHERE path = ?",
@@ -318,7 +364,7 @@ class IndexStore:
         Returns:
             sqlite3.Row 或 None（不存在时）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 "SELECT * FROM tracks WHERE id = ?",
@@ -328,7 +374,7 @@ class IndexStore:
 
     async def get_all_paths(self) -> list[str]:
         """获取所有已索引的路径（删除检测用）。"""
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute("SELECT path FROM tracks")
             rows = await cursor.fetchall()
@@ -351,7 +397,7 @@ class IndexStore:
 
         sql = f"INSERT INTO tracks ({', '.join(columns)}) VALUES ({placeholders})"
 
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(sql, values)
             await db.commit()
@@ -396,7 +442,7 @@ class IndexStore:
             f" ON CONFLICT(path) DO UPDATE SET {', '.join(set_clauses)}"
         )
 
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(sql, values)
             await db.commit()
@@ -404,9 +450,62 @@ class IndexStore:
             assert rowid is not None, "UPSERT did not return a rowid"
             return rowid
 
+    # 批量 upsert 的固定列集（与 _read_audio_tags 输出 + created_at/updated_at 对齐）。
+    # 固定列而非每行动态列：批量 INSERT...VALUES 多行需要所有行列数一致，
+    # 取并集会让 SQL 静态可预编译，executemany 一次提交一个事务。
+    # 缺失的可空列（track/disc/year/bitrate/samplerate）填 None（列允许 NULL）；
+    # NOT NULL DEFAULT 列由 scanner 保证提供（title/artist/.../duration/tag_map/mtime/size/has_cover）。
+    _BATCH_COLUMNS = (
+        "title", "artist", "album_artist", "album", "path",
+        "track", "disc", "year", "duration", "bitrate", "codec", "samplerate",
+        "tag_map", "mtime", "size", "has_cover", "created_at", "updated_at",
+    )
+
+    async def upsert_tracks_batch(self, rows: list[dict]) -> int:
+        """批量 upsert 多条 track（单事务 executemany）。
+
+        相比逐条 upsert_track（每条开连接+commit），batch 把一个 folder 的所有
+        文件（通常 10-30 行）合到一个事务里提交：连接开关 1 次、commit 1 次、
+        写锁持有时间从"逐文件几乎全程独占"降到"folder 级短占"——扫描期读端点
+        （list/stats）能穿插进来，不再被写压垮超时。
+
+        列集固定（_BATCH_COLUMNS），每行映射到该列集；缺失可空列填 None。
+        path 冲突走 ON CONFLICT DO UPDATE 更新其余列。created_at/updated_at
+        由调用方（scanner）填好，本方法不动时间戳逻辑。
+
+        Args:
+            rows: track dict 列表（键为列名，可含 _BATCH_COLUMNS 子集；
+                  缺失列按可空性填 None）。
+
+        Returns:
+            受影响行数（executemany rowcount，-1 表示某些驱动不返回）。
+        """
+        if not rows:
+            return 0
+
+        cols = self._BATCH_COLUMNS
+        placeholders = "(" + ", ".join("?" for _ in cols) + ")"
+        # path 是冲突列，SET 排除 path
+        set_cols = [c for c in cols if c != "path"]
+        set_clause = ", ".join(f"{c} = excluded.{c}" for c in set_cols)
+        sql = (
+            f"INSERT INTO tracks ({', '.join(cols)}) VALUES {placeholders}"
+            f" ON CONFLICT(path) DO UPDATE SET {set_clause}"
+        )
+
+        # 映射每行到固定列顺序（缺失填 None）
+        batch_values = [
+            [row.get(c) for c in cols] for row in rows
+        ]
+
+        async with self._connect() as db:
+            await db.executemany(sql, batch_values)
+            await db.commit()
+            return db.total_changes or len(rows)
+
     async def delete_track_by_path(self, path: str) -> None:
         """按 path 删除一条 track 记录。"""
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute("DELETE FROM tracks WHERE path = ?", (path,))
             await db.commit()
 
@@ -418,7 +517,7 @@ class IndexStore:
         Returns:
             sqlite3.Row 或 None（表为空时——首次启动尚未写入）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute("SELECT * FROM scanner_status WHERE id = 1")
             return await cursor.fetchone()
@@ -445,13 +544,13 @@ class IndexStore:
 
         sql = f"UPDATE scanner_status SET {', '.join(set_parts)} WHERE id = 1"
 
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(sql, values)
             await db.commit()
 
     async def _ensure_scanner_status_row(self) -> None:
         """确保 scanner_status 表有 id=1 的行（INSERT OR IGNORE）。"""
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(
                 "INSERT OR IGNORE INTO scanner_status "
                 "(id, state, count, folder_count, total_files) "
@@ -471,7 +570,7 @@ class IndexStore:
         记 error_message 便于排查（正常停止不会有这条）。
         """
         await self._ensure_scanner_status_row()
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(
                 "UPDATE scanner_status "
                 "SET state = 'idle', "
@@ -489,7 +588,7 @@ class IndexStore:
         Returns:
             folder_hash 字符串，或 None（未记录过）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 "SELECT folder_hash FROM folder_watermarks WHERE folder_path = ?",
@@ -501,7 +600,7 @@ class IndexStore:
     async def set_folder_hash(self, folder_path: str, folder_hash: str) -> None:
         """写入/更新 folder 的 hash watermark。"""
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(
                 "INSERT INTO folder_watermarks (folder_path, folder_hash, updated_at) "
                 "VALUES (?, ?, ?) ON CONFLICT(folder_path) DO UPDATE SET "
@@ -518,7 +617,7 @@ class IndexStore:
         Returns:
             sqlite3.Row 或 None（首次启动尚未写入时——调用方应回退默认值）。
         """
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute("SELECT * FROM app_settings WHERE id = 1")
             return await cursor.fetchone()
@@ -543,13 +642,13 @@ class IndexStore:
 
         sql = f"UPDATE app_settings SET {', '.join(set_parts)} WHERE id = 1"
 
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(sql, values)
             await db.commit()
 
     async def _ensure_app_settings_row(self) -> None:
         """确保 app_settings 表有 id=1 的行（INSERT OR IGNORE）。"""
-        async with aiosqlite.connect(self._db_path) as db:
+        async with self._connect() as db:
             await db.execute(
                 "INSERT OR IGNORE INTO app_settings (id) VALUES (1)"
             )

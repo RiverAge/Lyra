@@ -23,7 +23,11 @@ RUN pnpm build
 
 # ---------- Stage 2: runtime ----------
 # python:3.12-slim 与 AGENTS.md §3 的 3.12 边界一致
+# ARG LYRA_VERSION：CI 构建期注入 git tag 作版本号（_version.py 读 ENV）。
+# 默认 dev（无 CI 注入）回落 0.1.0（与 frontend/package.json 对齐）。
 FROM python:3.12-slim AS runtime
+
+ARG LYRA_VERSION=0.1.0
 
 # ffmpeg：ALAC 等浏览器不可解码的 codec 需实时转码为 Opus（见 backend/play/transcode.py）
 RUN apt-get update && \
@@ -58,6 +62,7 @@ ENV LYRA_MUSIC_LIBRARY_ROOT=/music \
     LYRA_LOG_DIR=/data/logs \
     LYRA_ROLE_MAP_FILE=/app/data/role_map.toml \
     LYRA_STATIC_DIR=/app/static \
+    LYRA_VERSION=${LYRA_VERSION} \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 

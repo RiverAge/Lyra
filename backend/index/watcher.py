@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.index.scanner import Scanner
+from backend.index.store import IndexStore
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +116,9 @@ class Watcher:
     包装 watchdog Observer，提供 debounce + 定点扫描 + 退化能力。
     """
 
-    def __init__(self, scanner: Scanner, library_root: Path) -> None:
+    def __init__(self, scanner: Scanner, library_root: Path, store: IndexStore) -> None:
         self._scanner = scanner
+        self._store = store
         self._library_root = library_root.resolve()
         self._observer: Any = None
         self._queue: asyncio.Queue[Path] = asyncio.Queue(maxsize=_EVENT_QUEUE_SIZE)
@@ -253,18 +255,27 @@ class Watcher:
     async def _scan_affected(self, folders: set[Path]) -> None:
         """扫描受影响的目录。
 
-        若当前正在扫描中，等待退避时间后套娃重试。
-        扫描前检查目录存在性。
+        若当前正在扫描中（watcher 自身重叠，或 scan_all 全量扫描进行中），
+        等待退避时间后套娃重试。扫描前检查目录存在性。
+
+        关键：除了 watcher 自身的 ``_scanning`` 标志，还要查 ``scanner_status``
+        表的 state——startup 的 ``_initial_scan`` 全量扫描（不经过 watcher 的
+        ``_scanning`` 标志）跑时，watcher 若同时增量扫，会和全量扫抢 SQLite
+        写锁抛 ``database is locked``（WAL 下读不阻塞写，但写写仍互斥，且默认
+        busy_timeout=0 立即报错）。查到 state==scanning 就退避让路。
         """
         if self._scanning:
-            logger.debug(
-                "扫描进行中，退避 %ds 后重试 %d 个目录",
-                _DEBOUNCE_SECONDS * _BACKOFF_MULTIPLIER,
-                len(folders),
-            )
-            await asyncio.sleep(_DEBOUNCE_SECONDS * _BACKOFF_MULTIPLIER)
-            if self._running:
-                await self._scan_affected(folders)
+            await self._backoff_and_retry(folders)
+            return
+
+        # 查 DB 级扫描状态（防 watcher 与 scan_all 全量扫抢写锁）
+        try:
+            status = await self._store.get_scanner_status()
+        except Exception:
+            logger.debug("查 scanner_status 失败，按非扫描态处理", exc_info=True)
+            status = None
+        if status is not None and status["state"] == "scanning":
+            await self._backoff_and_retry(folders)
             return
 
         self._scanning = True
@@ -281,6 +292,17 @@ class Watcher:
                     logger.exception("扫描目录失败: %s", folder)
         finally:
             self._scanning = False
+
+    async def _backoff_and_retry(self, folders: set[Path]) -> None:
+        """扫描进行中：退避后重试。抽出来让 _scan_affected 可读。"""
+        logger.debug(
+            "扫描进行中，退避 %ds 后重试 %d 个目录",
+            _DEBOUNCE_SECONDS * _BACKOFF_MULTIPLIER,
+            len(folders),
+        )
+        await asyncio.sleep(_DEBOUNCE_SECONDS * _BACKOFF_MULTIPLIER)
+        if self._running:
+            await self._scan_affected(folders)
 
     async def _periodic_loop(self) -> None:
         """退化模式：定时全量扫描（仅 watch 不可用时启用）。"""

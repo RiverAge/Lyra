@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -363,14 +364,20 @@ class Scanner:
 
         # 并发读 mutagen（CPU+IO 重叠）。run_in_executor(None,...) 默认线程池
         # 可并行 N 个——GIL 下 mutagen 多为 IO（seek 读 header）+ 部分 C 解析，
-        # 线程并发能重叠 IO 等待。写库保持串行（下方循环），避免 SQLite 并发写锁。
+        # 线程并发能重叠 IO 等待。写库保持串行（下方批量），避免 SQLite 并发写锁。
         # 并发数受默认 ThreadPoolExecutor 限制（通常 min(32, cpu+4)），足够。
         read_tasks = [
             loop.run_in_executor(None, _read_audio_tags, entry)
             for entry in to_scan
         ]
+        _t_read_start = time.monotonic()
         read_results = await asyncio.gather(*read_tasks, return_exceptions=True)
+        _read_ms = (time.monotonic() - _t_read_start) * 1000
 
+        # 收集有效 tags（异常/空结果跳过），统一补时间戳后攒成批量写 list。
+        # 攒完一次性 upsert_tracks_batch：单事务 executemany，相比逐文件
+        # upsert_track 的"每条一连接一commit"，写锁占用骤降，扫描期读不被压垮。
+        batch_rows: list[dict] = []
         processed = 0
         for entry, result in zip(to_scan, read_results):
             entry_path_str = str(entry).replace("\\", "/")
@@ -389,18 +396,40 @@ class Scanner:
             if "created_at" not in tags:
                 tags["created_at"] = now_ms
             tags["updated_at"] = now_ms
-
-            try:
-                await self._store.upsert_track(**tags)
-            except Exception:
-                logger.exception("写入 track 失败: %s", entry_path_str)
-                processed += 1
-                continue
-
+            batch_rows.append(tags)
             processed += 1
+
+        _t_write_start = time.monotonic()
+        if batch_rows:
+            try:
+                await self._store.upsert_tracks_batch(batch_rows)
+            except Exception:
+                logger.exception(
+                    "批量写入 %d tracks 失败 (folder=%s)，回退逐条写",
+                    len(batch_rows), folder_path_str,
+                )
+                # 回退逐条：至少单条失败不影响整批，便于定位坏数据
+                for tags in batch_rows:
+                    try:
+                        await self._store.upsert_track(**tags)
+                    except Exception:
+                        logger.exception("写入 track 失败: %s", tags.get("path"))
+        _write_ms = (time.monotonic() - _t_write_start) * 1000
 
         # 更新 watermark
         await self._store.set_folder_hash(folder_path_str, current_hash)
+
+        # folder 级耗时日志：read(mutagen并发) vs write(批量upsert) 占比。
+        # INFO 级——扫描期每 folder 一行，用于定位"45min 慢在哪"：read 占高
+        # =磁盘 IO 瓶颈（调并发数/预读）；write 占高=写库瓶颈（批量已治）。
+        if processed > 0:
+            logger.info(
+                "[scan] folder=%s files=%d read_ms=%.0f write_ms=%.0f "
+                "total_ms=%.0f read_pct=%.0f%%",
+                folder_path_str, processed, _read_ms, _write_ms,
+                _read_ms + _write_ms,
+                100 * _read_ms / max(1, _read_ms + _write_ms),
+            )
 
         return processed + skipped_mtime
 
@@ -423,6 +452,7 @@ class Scanner:
              "total_files": T}
         """
         now_ms = int(datetime.now(UTC).timestamp() * 1000)
+        _scan_start = time.monotonic()
 
         await self._store.set_scanner_status(
             state="scanning",
@@ -519,8 +549,11 @@ class Scanner:
             )
 
             logger.info(
-                "全量扫描完成: files=%d, deleted=%d, folders=%d, total=%d",
+                "全量扫描完成: files=%d, deleted=%d, folders=%d, total=%d, "
+                "elapsed=%.1fs, avg=%.0fms/file",
                 processed_files, deleted, total_folders, total_files,
+                time.monotonic() - _scan_start,
+                (time.monotonic() - _scan_start) * 1000 / max(1, total_files),
             )
 
             return {

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from backend.index.store import IndexStore, set_store
+from backend.server.library_routes import _stats_cache
 
 # 所有测试都需要 async 支持
 pytestmark = pytest.mark.asyncio
@@ -113,6 +114,96 @@ async def test_library_with_track(store: IndexStore, client: AsyncClient) -> Non
     assert "updated_at" not in item
     assert item["size"] == 25000000
     assert item["has_cover"] == 1
+
+
+async def test_library_search_empty_q(client: AsyncClient) -> None:
+    """空 query → items=[]，不报错。"""
+    resp = await client.get("/api/library/search?q=")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["items"] == []
+
+
+async def test_library_search_matches(store: IndexStore, client: AsyncClient) -> None:
+    """搜索跨 title/artist/album 都能命中，返回列表列集（无 tag_map）。"""
+    await store.insert_track(
+        title="Lemon",
+        artist="米津玄師",
+        album_artist="米津玄師",
+        album="Lemon EP",
+        path="/music/yonezu/lemon/01.m4a",
+        track=1,
+        duration=240000,
+        codec="alac",
+        tag_map='{}',
+        mtime=1750000000000,
+        size=1000,
+        has_cover=1,
+        created_at=1750000000000,
+        updated_at=1750000000000,
+    )
+    await store.insert_track(
+        title="Loser",
+        artist="Other Artist",
+        album_artist="Other Artist",
+        album="Random",
+        path="/music/other/loser.m4a",
+        track=1,
+        duration=200000,
+        codec="alac",
+        tag_map='{}',
+        mtime=1750000000000,
+        size=1000,
+        has_cover=1,
+        created_at=1750000000000,
+        updated_at=1750000000000,
+    )
+
+    # title 命中
+    resp = await client.get("/api/library/search?q=Lemon")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["title"] == "Lemon"
+    assert "tag_map" not in items[0]  # 列表列集
+
+    # artist 命中
+    resp = await client.get("/api/library/search?q=米津")
+    assert len(resp.json()["items"]) == 1
+
+    # album 命中
+    resp = await client.get("/api/library/search?q=Random")
+    assert len(resp.json()["items"]) == 1
+
+    # 无匹配
+    resp = await client.get("/api/library/search?q=NoSuchSong")
+    assert resp.json()["items"] == []
+
+
+async def test_library_search_before_track_id_route(
+    store: IndexStore, client: AsyncClient,
+) -> None:
+    """路由顺序：/library/search 不被 /library/{track_id} 吞掉（search 非 track_id）。"""
+    await store.insert_track(
+        title="T",
+        artist="A",
+        album_artist="A",
+        album="Al",
+        path="/music/s/01.m4a",
+        track=1,
+        duration=100000,
+        codec="alac",
+        tag_map='{}',
+        mtime=1750000000000,
+        size=1000,
+        has_cover=0,
+        created_at=1750000000000,
+        updated_at=1750000000000,
+    )
+    # /library/search 应 200（不是 422 把 search 当 track_id）
+    resp = await client.get("/api/library/search?q=T")
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 1
 
 
 async def test_library_pagination(store: IndexStore, client: AsyncClient) -> None:
@@ -254,3 +345,81 @@ async def test_get_track_db_unavailable(app: FastAPI) -> None:
         assert resp.status_code == 503
         body = resp.json()
         assert "Database not initialized" in body["detail"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/library/stats — 聚合统计 + 扫描期缓存
+# ---------------------------------------------------------------------------
+
+
+async def test_library_stats_basic(store: IndexStore, client: AsyncClient) -> None:
+    """空闲态 stats 返回正确聚合值，且缓存被填充。"""
+    _stats_cache.value = None  # 清缓存防其他测试污染
+    await store.insert_track(
+        title="A",
+        artist="X",
+        album_artist="X",
+        album="Album1",
+        path="/music/Album1/01.m4a",
+        track=1,
+        duration=100000,
+        codec="alac",
+        created_at=1750000000000,
+        updated_at=1750000000000,
+    )
+
+    resp = await client.get("/api/library/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["track_count"] == 1
+    assert body["album_count"] == 1
+    assert body["total_duration_sec"] == 100  # 100000ms / 1000
+    assert body["lossless_ratio"] == 1.0  # alac 无损
+    # 空闲态查完 DB 应填充缓存
+    assert _stats_cache.value is not None
+
+
+async def test_library_stats_cached_during_scan(
+    store: IndexStore, client: AsyncClient,
+) -> None:
+    """扫描中且缓存有值 → 返回缓存（跳过全表扫），不查 DB。
+
+    构造：先查一次 stats 填充缓存，再置 scanning，删表行，
+    再次 stats 应返回缓存的旧值（而非 0）——证明没查 DB。
+    """
+    _stats_cache.value = None
+    await store.insert_track(
+        title="A",
+        artist="X",
+        album_artist="X",
+        album="Album1",
+        path="/music/Album1/01.m4a",
+        track=1,
+        duration=100000,
+        codec="alac",
+        created_at=1750000000000,
+        updated_at=1750000000000,
+    )
+    # 第一次查 → 填充缓存（track_count=1）
+    resp1 = await client.get("/api/library/stats")
+    assert resp1.json()["track_count"] == 1
+
+    # 置扫描中
+    await store.set_scanner_status(state="scanning", scan_type="full")
+
+    # 删光 tracks 行——若 stats 走 DB 会返回 0；走缓存应仍是 1
+    await _db_exec(store, "DELETE FROM tracks")
+    resp2 = await client.get("/api/library/stats")
+    assert resp2.status_code == 200
+    assert resp2.json()["track_count"] == 1  # 缓存值，非 DB 实时值
+
+    _stats_cache.value = None  # 清缓存防泄漏
+
+
+async def _db_exec(store: IndexStore, sql: str) -> None:
+    """测试辅助：直接执行裸 SQL（清表用）。"""
+    import aiosqlite
+
+    async with aiosqlite.connect(store._db_path) as db:  # noqa: SLF001
+        await db.execute(sql)
+        await db.commit()

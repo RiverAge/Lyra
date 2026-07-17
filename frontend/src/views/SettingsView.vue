@@ -120,6 +120,10 @@
         <div v-else-if="settingsStore.configError" class="alert alert-fail">{{ settingsStore.configError }}</div>
         <div v-else-if="settingsStore.config" class="info-grid flex flex-col gap-0.5">
           <div class="info-row">
+            <span class="info-k">版本</span>
+            <span class="info-v font-mono text-xs">{{ settingsStore.config.version }}</span>
+          </div>
+          <div class="info-row">
             <span class="info-k">库根目录</span>
             <span class="info-v font-mono text-xs">{{ settingsStore.config.music_library_root || "未配置" }}</span>
           </div>

@@ -1,8 +1,11 @@
 """Lyra API 路由——library 端点。"""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import mutagen  # noqa: PLC0415 — executor 线程内需模块级可用
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -17,6 +20,15 @@ from backend.index.store import get_store
 logger = logging.getLogger(__name__)
 
 library_router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# stats 内存缓存：扫描期间返回上次扫完的值，跳过全表扫（见 library_stats）。
+# 单 worker 进程内存即可；重启丢失 → 首次查询走 DB 重建（行少时快）。
+# 无需主动清：扫完后 is_scanning=false，下次请求自然走 DB 刷新缓存。
+# SimpleNamespace.value 用法避免模块级可变全局被 lint 误报（统一一个可变槽）。
+# ---------------------------------------------------------------------------
+_stats_cache = SimpleNamespace(value=None)
 
 
 def _track_row_to_dict(row: dict) -> dict:
@@ -89,6 +101,11 @@ async def list_library(
 async def library_stats() -> dict:
     """曲库聚合统计端点（首页统计卡数据源）。
 
+    扫描期间返回上次扫完的缓存值（瞬返回，跳过全表扫）。原因：stats 的
+    ``COUNT(DISTINCT album)`` 全表扫 + 同期 2 万次 upsert 抢 IO/锁 → 实测
+    17s+，前端 axios 15s 超时 → 首页统计卡空白。WAL 让读不阻塞写，但全表扫
+    本身在 IO 饱和下仍慢。缓存命中时 O(1)，扫描结束后再查 DB 刷新缓存。
+
     Returns:
         {track_count, album_count, total_duration_sec, lossless_ratio}
         lossless_ratio 为 0.0~1.0。空库返回全 0。
@@ -103,7 +120,50 @@ async def library_stats() -> dict:
             detail="Database not initialized",
         )
 
-    return await store.library_stats()
+    # 扫描中且有缓存 → 返回缓存（跳过全表扫，避免 17s+ 拖垮首页）
+    status = await store.get_scanner_status()
+    is_scanning = status is not None and status["state"] == "scanning"
+    if is_scanning and _stats_cache.value is not None:
+        return _stats_cache.value
+
+    result = await store.library_stats()
+    # 空缓存兜底：扫描中但还没缓存（首次扫描、进程重启丢内存缓存），
+    # 此时行数尚少（或刚起步），查一次 DB 拿基线，后续扫描期复用。
+    _stats_cache.value = result
+    return result
+
+
+@library_router.get("/library/search")
+async def search_library(
+    q: str = Query(default="", description="搜索关键词（跨 title/artist/album 模糊匹配）"),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> dict:
+    """全局搜索端点（⌘K 搜索框用）。
+
+    单关键词跨 title/artist/album OR LIKE，命中任一即返回前 N 条。
+    路由必须在 /library/{track_id} 之前注册（否则 "search" 被当 track_id）。
+
+    Args:
+        q: 搜索关键词。空串（或纯空白）→ 返回 items=[]，不查 DB。
+        limit: 返回条数上限，1-50，默认 10。
+
+    Returns:
+        {"items": [...], "q": "原词", "limit": N}
+        items 用列表列集（无 tag_map），id 为 str。
+
+    Raises:
+        HTTPException 503: 数据库未初始化。
+    """
+    store = get_store()
+    if store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database not initialized",
+        )
+
+    rows = await store.search_tracks(q, limit=limit)
+    items = [_track_row_to_dict(dict(r)) for r in rows]
+    return {"items": items, "q": q, "limit": limit}
 
 
 @library_router.get("/library/{track_id}")
