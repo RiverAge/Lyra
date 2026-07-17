@@ -34,5 +34,8 @@ AGENTS.base.md
 data/*
 !data/role_map.toml
 
+# backend 运行时缓存(lyric_cache 等,不入库)
+backend/data/
+
 # ZCode 工具临时目录
 .zcode/

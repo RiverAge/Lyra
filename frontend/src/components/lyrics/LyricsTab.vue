@@ -1,39 +1,19 @@
 <template>
-  <div class="flex flex-col gap-6">
-    <!-- section head -->
-    <div class="flex items-baseline justify-between gap-4">
-      <div>
-        <h3 class="text-xl font-semibold tracking-tight text-primary">歌词</h3>
-        <p class="mt-0.5 text-sm text-secondary">在线匹配候选歌词，或管理已有 sidecar 文件</p>
-      </div>
-    </div>
-
-    <!-- 在线匹配（主从布局：左候选/右歌词，编辑器入口在工具栏） -->
-    <MatchPanel :track-id="trackId" />
-
-    <!-- 已有 sidecar -->
-    <SidecarList :track-id="trackId" />
-  </div>
+  <LyricsWorkspace :track-id="trackId" />
 </template>
 
 <script setup lang="ts">
-import MatchPanel from "./MatchPanel.vue"
-import SidecarList from "./SidecarList.vue"
+import LyricsWorkspace from "./LyricsWorkspace.vue"
 import { useLyricsStore } from "@/stores/lyrics"
 import type { TrackItem } from "@/apis/library"
 
 /**
  * 歌词 tab 容器
  *
- * 职责：
- * - section head + 垂直堆叠 MatchPanel（主从布局）/ SidecarList
- * - trackId 变化时重置 store（防跨曲目残留状态）
- * - 「逐字编辑器」入口已移入 MatchPanel 顶部工具栏
+ * 退化为壳：实际工作台在 LyricsWorkspace（左来源选择器 + 右统一预览 + SyncControls 常驻）。
+ * trackId 变化时重置 store（防跨曲目残留状态）。
  *
- * 约束：
- * - auto-import 已注入 watch
- * - 由 TrackDetailView.vue 用 defineAsyncComponent 加载
- * - 不直接调 apis
+ * 约束：auto-import 已注入 watch；由 TrackDetailView.vue 用 defineAsyncComponent 加载。
  */
 const props = defineProps<{
   trackId: string
@@ -43,7 +23,7 @@ const props = defineProps<{
 
 const store = useLyricsStore()
 
-// trackId 变化时清空旧曲目的匹配状态与 sidecar（SidecarList onMounted 会重新加载）
+// trackId 变化时清空旧曲目的匹配状态与 sidecar（LyricsWorkspace onMounted 会重新加载）
 watch(
   () => props.trackId,
   () => {

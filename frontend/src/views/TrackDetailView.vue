@@ -53,9 +53,9 @@
 
     <!-- track 详情 -->
     <template v-else>
-      <!-- Hero：横向紧凑——封面左 + 标题/艺人/徽章/操作 右 -->
-      <section class="mt-6 flex items-start gap-5 pb-6 pt-1">
-        <div class="hero-cover h-24 w-24 shrink-0 overflow-hidden rounded-md bg-subtle">
+      <!-- Hero：紧凑单行——封面 48px + 标题·艺术家 + 徽章 + 编辑器；文件路径折叠 -->
+      <section class="mt-4 flex items-center gap-3 pb-4">
+        <div class="hero-cover h-12 w-12 shrink-0 overflow-hidden rounded-md bg-subtle">
           <img
             v-if="track.has_cover && !coverError"
             :src="`/api/library/${track.id}/artwork`"
@@ -63,41 +63,32 @@
             @error="coverError = true"
           >
           <div v-else class="grid h-full w-full place-items-center text-tertiary">
-            <Icon name="Music" :size="28" />
+            <Icon name="Music" :size="18" />
           </div>
         </div>
 
         <div class="min-w-0 flex-1">
-          <div class="mb-1">
-            <!-- 元数据徽章 -->
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="badge">{{ formatMs(track.duration) }}</span>
-              <span v-if="track.codec" class="badge uppercase">{{ track.codec }}</span>
-              <span v-if="track.year" class="badge">{{ track.year }}</span>
-            </div>
+          <!-- 标题 + 艺术家同一行 -->
+          <h1 class="truncate text-lg font-semibold leading-tight tracking-tight text-primary">
+            {{ track.title || "（无标题）" }}
+            <span class="font-normal text-secondary"> · {{ track.artist || "—" }}</span>
+          </h1>
+          <!-- 徽章行 inline -->
+          <div class="mt-1 flex flex-wrap items-center gap-1.5">
+            <span class="badge">{{ formatMs(track.duration) }}</span>
+            <span v-if="track.codec" class="badge uppercase">{{ track.codec }}</span>
+            <span v-if="track.year" class="badge">{{ track.year }}</span>
+            <details class="hero-details">
+              <summary class="hero-summary">详情 ›</summary>
+              <p class="mt-1 max-w-full truncate font-mono text-xs text-tertiary" :title="track.path">{{ track.path }}</p>
+            </details>
           </div>
-
-          <h1 class="mb-1 truncate text-xl font-semibold leading-tight tracking-tight text-primary">{{ track.title || "（无标题）" }}</h1>
-          <p class="mb-3.5 truncate text-sm text-secondary">{{ track.artist || "—" }} · {{ track.album || "—" }}</p>
-
-          <!-- 主操作：播放 + 编辑器 -->
-          <div class="mb-2.5 flex items-center gap-2.5">
-            <BaseButton
-              variant="primary"
-              size="md"
-              :icon="isCurrentAndPlaying ? 'Pause' : 'Play'"
-              @click="onPlay"
-            >
-              {{ isCurrentAndPlaying ? "暂停" : "播放" }}
-            </BaseButton>
-            <BaseButton variant="secondary" size="md" icon="Edit3" @click="goLyricsEditor">
-              逐字编辑器
-            </BaseButton>
-          </div>
-
-          <!-- 路径 -->
-          <p class="max-w-full truncate font-mono text-xs tracking-tight text-tertiary" :title="track.path">{{ track.path }}</p>
         </div>
+
+        <!-- 编辑器入口（播放转交歌词区 SyncControls） -->
+        <BaseButton variant="secondary" size="sm" icon="Edit3" class="shrink-0" @click="goLyricsEditor">
+          逐字编辑器
+        </BaseButton>
       </section>
 
       <!-- tab 栏 -->
@@ -133,12 +124,12 @@ const MetaTab = defineAsyncComponent(() => import("@/components/meta/MetaTab.vue
 const LyricsTab = defineAsyncComponent(() => import("@/components/lyrics/LyricsTab.vue"))
 
 /**
- * Track 详情页壳（横向紧凑 Hero + tab）
+ * Track 详情页壳（紧凑 Hero + tab）
  *
  * 设计：
- * - Hero：横向紧凑（封面96px + 标题/艺人/徽章/播放按钮）
- * - tab：元数据 / 歌词（defineAsyncComponent 动态加载）
- * - 播放：audioManager 单例（跨页面共享），Hero 按钮调 togglePlay
+ * - Hero：紧凑单行（封面48px + 标题·艺术家 + 徽章 + 编辑器；文件路径折叠进「详情」）
+ * - tab：元数据 / 歌词（defineAsyncComponent 动态加载），默认进歌词 tab
+ * - 播放：audioManager 单例（跨页面共享），Hero 无播放钮，播放控件在歌词区 SyncControls 常驻
  * - 进页 loadTrack → fetchTrackById + audioManager.loadTrack(track, query.play==='1')
  *   同 track 不重载（跨页面跳转保留进度）；?play=1 则自动播
  */
@@ -154,7 +145,7 @@ const tabs: TabEntry[] = [
   { key: "lyrics", label: "歌词", component: LyricsTab },
 ]
 
-const activeKey = ref<"meta" | "lyrics">("meta")
+const activeKey = ref<"meta" | "lyrics">("lyrics")
 const activeTab = computed(
   () => tabs.find((t) => t.key === activeKey.value) ?? tabs[0],
 )
@@ -168,11 +159,6 @@ const track = ref<TrackItem | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
 const coverError = ref(false)
-
-/** 当前播放的就是此 track 且正在播放（audioManager 单例状态） */
-const isCurrentAndPlaying = computed(
-  () => audio.currentTrackId.value === track.value?.id && audio.playing.value,
-)
 
 onMounted(() => {
   void loadTrack()
@@ -213,16 +199,6 @@ async function loadTrack(): Promise<void> {
  * tag_map 不再入库，MetaTab 自行 reload 现读文件） */
 function onMetaWritten(): void {
   void loadTrack()
-}
-
-/** Hero 播放按钮：当前曲在播→暂停；否则加载并播放（audioManager 单例） */
-function onPlay(): void {
-  if (!track.value) return
-  if (audio.currentTrackId.value === track.value.id) {
-    audio.togglePlay()
-  } else {
-    void audio.loadTrack(track.value, true)
-  }
 }
 
 function goBack(): void {
@@ -297,5 +273,22 @@ function normalizeError(e: unknown): string {
   color: var(--theme-text-primary);
   border-bottom-color: var(--theme-accent);
   font-weight: 500;
+}
+
+/* Hero 详情折叠：隐藏原生三角，summary 当文字链接 */
+.hero-details summary {
+  list-style: none;
+}
+.hero-details summary::-webkit-details-marker {
+  display: none;
+}
+.hero-summary {
+  font-size: 12px;
+  color: var(--theme-text-tertiary);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.hero-summary:hover {
+  color: var(--theme-text-secondary);
 }
 </style>
