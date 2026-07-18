@@ -1,8 +1,8 @@
 <template>
-  <div class="mx-auto max-w-6xl px-6 py-8">
+  <div class="mx-auto max-w-6xl px-6 py-8 max-sm:px-4">
     <!-- 页头 -->
     <div class="mb-7">
-      <h1 class="mb-2 text-3xl font-semibold tracking-tight text-primary">
+      <h1 class="mb-2 text-3xl font-semibold tracking-tight text-primary max-sm:text-2xl">
         曲库
       </h1>
       <p class="text-sm text-secondary">
@@ -47,8 +47,8 @@
     />
 
     <!-- 分页 -->
-    <div class="mt-5 flex items-center justify-between text-sm text-secondary">
-      <div>{{ pagerText }}</div>
+    <div class="pager mt-5 flex items-center justify-between text-sm text-secondary">
+      <div class="pager-text">{{ pagerText }}</div>
       <div class="flex items-center">
         <button
           class="pg"
@@ -171,5 +171,19 @@ async function reload(): Promise<void> {
   background-color: var(--theme-accent);
   color: var(--theme-on-accent);
   border-color: var(--theme-accent);
+}
+
+/* ---- 窄屏(<640px):分页栏上下堆叠 + 统计竖线隐藏 ---- */
+@media (max-width: 640px) {
+  /* 分页:justify-between 窄屏左右挤 → 改上下堆叠(文字上,按钮组居中) */
+  .pager {
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+  }
+  /* 统计行分隔竖线:换行后突兀,窄屏隐藏 */
+  .meta-sep {
+    display: none;
+  }
 }
 </style>

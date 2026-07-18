@@ -137,21 +137,20 @@ html {
 }
 
 
-/* ---- 无障碍：prefers-reduced-motion 关闭动画 ----
-   根因：Preflight `border: 0 solid` 让所有元素 border-style:solid 就位，仅 border-width:0。
-   某些元素 transition border-color（.card-hover/.input-ring 等），reduce 下 transition 被压成
-   瞬时，border-color 过渡的那一帧（accent 墨黑 → 目标色）被冻结/瞬显成黑框。reduce 下
-   用户既看不到过渡，border-color 过渡也无意义，直接关掉其 transition-property 即可根治，
-   不动 Preflight、不影响正常用户的 border 过渡、不破坏无障碍。 */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms;
-    animation-iteration-count: 1;
-    transition-duration: 0.01ms;
-    transition-property: none;
-  }
+/* ---- 动画偏好开关（用户可控，默认开动画；Settings 可关）----
+   不再绑系统 prefers-reduced-motion：自用工具动画常驻，用户在 Settings
+   关闭「动画效果」→ <html>.no-anim → 全局 transition/animation 压成瞬时。
+   根因：Preflight `border: 0 solid` 让所有元素 border-style:solid 就位，
+   仅 border-width:0。某些元素 transition border-color（.card-hover/.input-ring
+   等），压成瞬时时 border-color 过渡的那一帧被冻结/瞬显成黑框——直接关掉
+   transition-property 即可根治，不影响正常用户的 border 过渡。 */
+html.no-anim *,
+html.no-anim *::before,
+html.no-anim *::after {
+  animation-duration: 0.01ms;
+  animation-iteration-count: 1;
+  transition-duration: 0.01ms;
+  transition-property: none;
 }
 
 /* ---- 组件层：卡片与交互工具类 ---- */

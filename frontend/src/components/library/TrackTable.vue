@@ -97,11 +97,11 @@
           </div>
           <div class="min-w-0">
             <div class="truncate text-sm text-primary">{{ track.title || "（无标题）" }}</div>
-            <div class="truncate text-xs text-secondary">{{ track.artist || "—" }}</div>
+            <div class="ttl-sub truncate text-xs text-secondary">{{ track.artist || "—" }}</div>
           </div>
         </div>
-        <div class="truncate text-sm text-secondary">{{ track.album || "—" }}</div>
-        <div class="truncate text-sm text-secondary">{{ track.artist || "—" }}</div>
+        <div class="truncate text-sm text-secondary cell-album">{{ track.album || "—" }}</div>
+        <div class="truncate text-sm text-secondary cell-artist">{{ track.artist || "—" }}</div>
         <div class="col-dur text-sm text-secondary tabular-nums">{{ formatMs(Number(track.duration) || 0) }}</div>
         <div class="col-fmt font-mono text-xs uppercase text-tertiary">{{ codecLabel(track.codec) }}</div>
         <div class="col-play" />
@@ -276,5 +276,74 @@ function formatMs(ms: number): string {
 @keyframes pulse-skel {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 0.9; }
+}
+
+/* ---- 窄屏(<640px):7 列 grid → 卡片列表 ----
+   DOM 不动(桌面 grid 结构保留),纯 flex-wrap + order 重排:
+   行1: 封面+标题(ttl,左) + 时长·格式(dur/fmt,右)
+   行2: 艺人 · 专辑(内容宽,同行)
+   序号/空操作列隐藏;hover 播放钮触屏常驻 */
+@media (max-width: 640px) {
+  .track-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 10px 12px;
+  }
+  /* 表头卡片模式无意义,隐藏 */
+  .track-head {
+    display: none;
+  }
+  /* 序号列 + 空操作列隐藏 */
+  .col-idx,
+  .col-play {
+    display: none;
+  }
+  /* 行1左:封面+标题,占主宽,标题 truncate;副标题艺人在行2 显,行1 藏避免重复 */
+  .ttl {
+    order: 1;
+    flex: 1 1 60%;
+    min-width: 0;
+    gap: 10px;
+  }
+  .ttl-sub {
+    display: none;
+  }
+  /* 行1右:时长 + 格式,内容宽,与标题同行 */
+  .col-dur {
+    order: 2;
+    flex: 0 0 auto;
+  }
+  .col-fmt {
+    order: 3;
+    flex: 0 0 auto;
+  }
+  /* 行2:专辑 · 艺人,内容宽同行(ttl 行1 的 flex:1 撑满,这俩自然落到行2) */
+  .cell-album {
+    order: 4;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .cell-artist {
+    order: 5;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  /* 触屏无 hover:播放钮常驻(序号位已隐藏,放标题列内左侧) */
+  .play-mini {
+    position: static;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    display: grid;
+  }
+  .num {
+    display: none;
+  }
+  /* 骨架行同步卡片化 */
+  .skel-idx {
+    display: none;
+  }
 }
 </style>

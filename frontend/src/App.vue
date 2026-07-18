@@ -2,7 +2,7 @@
   <div class="flex min-h-screen flex-col bg-base">
     <!-- Header（持久化） -->
     <header class="sticky top-0 z-50 bg-surface/80 backdrop-blur-md">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 max-sm:px-4">
         <RouterLink to="/" class="flex items-center gap-2 transition-opacity hover:opacity-80">
           <img src="/favicon.svg?v=3a" alt="Lyra" class="h-7 w-7">
           <span class="text-lg font-semibold text-primary">Lyra</span>
@@ -62,6 +62,7 @@ import SearchModal from "@/components/search/SearchModal.vue"
 import { useSearchStore } from "@/stores/search"
 import { useScannerStore } from "@/stores/scanner"
 import { useLibraryStore } from "@/stores/library"
+import { useAnimationPref } from "@/composables/useAnimationPref"
 import type { LibraryStats } from "@/apis/library"
 
 /* global KeyboardEvent, EventTarget, HTMLElement */
@@ -80,6 +81,7 @@ const router = useRouter()
 const searchStore = useSearchStore()
 const scannerStore = useScannerStore()
 const libraryStore = useLibraryStore()
+const { applyOnBoot: applyAnimationPref } = useAnimationPref()
 
 // 扫描完成事件带 stats 回调：后端算好 stats 推过来，填 libraryStore.stats，
 // 省一次 /library/stats HTTP 全表聚合。App 级注册 → 任意页面扫描完成都刷新。
@@ -135,6 +137,8 @@ function isTypingTarget(t: EventTarget | null): boolean {
 
 onMounted(() => {
   window.addEventListener("keydown", onGlobalKeydown)
+  // 动画偏好：读 localStorage 应用 <html>.no-anim（默认开动画）
+  applyAnimationPref()
   // SSE 扫描进度订阅提升到 App 级：跨页面常驻（切走 Library 不断开）。
   // startProgress 幂等（已有 EventSource 则 return）。refreshStatus 拿即时快照。
   void scannerStore.refreshStatus()

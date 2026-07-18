@@ -90,12 +90,12 @@
           class="table-row"
           :class="rowClass(row)"
         >
-          <div class="truncate text-sm font-medium text-primary">{{ row.label }}</div>
-          <div class="min-w-0 break-words text-sm text-secondary">
+          <div class="cell-label truncate text-sm font-medium text-primary">{{ row.label }}</div>
+          <div class="cell-current min-w-0 break-words text-sm text-secondary">
             <span v-if="row.currentValues.length > 0">{{ row.currentValues.join("; ") }}</span>
             <span v-else class="text-tertiary">—</span>
           </div>
-          <div class="min-w-0 flex flex-col gap-0.5 text-[13px] text-primary">
+          <div class="cell-auth min-w-0 flex flex-col gap-0.5 text-[13px] text-primary">
             <template v-if="row.hasAuth">
               <span class="break-words">{{ row.authValues.join("; ") }}</span>
               <!-- diff 内联：before 小字（仅 hasDiff 且已对比） -->
@@ -104,13 +104,13 @@
             <span v-else-if="hasFetched" class="text-tertiary">—</span>
             <span v-else class="text-xs text-tertiary">未拉取</span>
           </div>
-          <div class="text-center">
+          <div class="cell-status text-center">
             <span v-if="!row.hasAuth" class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary">本地</span>
             <span v-else-if="row.status === 'missing_permanent'" class="inline-flex items-center rounded-sm bg-subtle px-1.5 py-0.5 text-[11px] font-medium text-tertiary">暂无</span>
             <span v-else-if="row.status === 'failed_retryable'" class="inline-flex items-center rounded-sm bg-danger-subtle px-1.5 py-0.5 text-[11px] font-medium text-danger">失败</span>
             <span v-else class="inline-flex items-center rounded-sm bg-success-subtle px-1.5 py-0.5 text-[11px] font-medium text-success">就绪</span>
           </div>
-          <div class="text-center">
+          <div class="cell-cb text-center">
             <input
               v-model="selected"
               type="checkbox"
@@ -555,12 +555,53 @@ onMounted(async () => {
   display: none;
 }
 
+/* ---- 窄屏(<640px):5 列 grid → 卡片堆叠 ----
+   DOM 不动(桌面 grid 保留),table-row 改 flex-column:
+   字段名作标题(左),勾选框绝对定位右上;
+   当前值/权威值竖排带前缀(::before 注入"当前:"/"权威:");
+   状态徽章单独一行;表头隐藏。仿同文件 otherLocalRows 堆叠模式。 */
 @media (max-width: 640px) {
-  .table-head,
+  /* 表头卡片模式无意义,隐藏 */
+  .table-head {
+    display: none;
+  }
+  /* 行:grid → flex-column 卡片 */
   .table-row {
-    grid-template-columns: 100px 1fr 1fr 56px 36px;
-    gap: 8px;
-    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    padding: 12px;
+    position: relative;
+  }
+  /* 字段名:卡片标题 */
+  .cell-label {
+    font-size: 14px;
+    font-weight: 600;
+    padding-right: 28px; /* 留出勾选框位 */
+  }
+  /* 勾选框:右上角绝对定位 */
+  .cell-cb {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+  /* 当前值:带"当前:"前缀(容器非 flex,::before inline 在文本前) */
+  .cell-current::before {
+    content: "当前: ";
+    color: var(--theme-text-tertiary);
+    font-size: 12px;
+  }
+  /* 权威值:带"权威:"前缀。容器是 flex-col,前缀注入首个 span 前(否则会独占行) */
+  .cell-auth > span:first-child::before {
+    content: "权威: ";
+    color: var(--theme-text-tertiary);
+    font-size: 12px;
+  }
+  /* 状态徽章:左对齐(不再 text-center) */
+  .cell-status {
+    text-align: left;
+    margin-top: 2px;
   }
 }
 </style>

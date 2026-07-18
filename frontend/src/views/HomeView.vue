@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-6xl px-6 py-6">
+  <div class="mx-auto max-w-6xl px-6 py-6 max-sm:px-4">
     <div class="card p-6">
       <h2 class="mb-2 text-lg font-medium text-primary">
         欢迎使用 Lyra

@@ -92,7 +92,7 @@ onMounted(() => {
     waveColor: style.getPropertyValue("--color-border-line").trim() || "#5a5f70",
     progressColor: style.getPropertyValue("--color-accent").trim() || "#6366f1",
     url: `/api/play/${props.trackId}`,
-    height: 80,
+    height: window.innerWidth <= 640 ? 60 : 80,
   })
 
   ws.value.on("ready", () => {

@@ -374,7 +374,8 @@ function formatTimestamp(ts: number): string {
   border-top: 1px solid var(--theme-border-subtle);
 }
 
-/* 浮层过渡：opacity + 轻微下移缩放，对齐 SearchModal 曲线/时长 */
+/* 浮层过渡：opacity + 轻微下移缩放，对齐 SearchModal 曲线/时长。
+   关闭动画时由 tokens.css 的 html.no-anim * 全局兜底压成瞬时，此处不重复。 */
 .si-pop-enter-active,
 .si-pop-leave-active {
   transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
@@ -383,12 +384,6 @@ function formatTimestamp(ts: number): string {
 .si-pop-leave-to {
   opacity: 0;
   transform: translateY(-8px) scale(0.98);
-}
-@media (prefers-reduced-motion: reduce) {
-  .si-pop-enter-active,
-  .si-pop-leave-active {
-    transition-duration: 0.01ms;
-  }
 }
 
 @media (max-width: 640px) {

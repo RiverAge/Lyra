@@ -335,13 +335,5 @@ async function select(id: string): Promise<void> {
   opacity: 0;
   transform: translateY(-12px) scale(0.98);
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .search-modal-enter-active,
-  .search-modal-leave-active,
-  .search-modal-enter-active .search-panel,
-  .search-modal-leave-active .search-panel {
-    transition-duration: 0.01ms;
-  }
-}
+/* 关闭动画时由 tokens.css 的 html.no-anim * 全局兜底压成瞬时，此处不重复 */
 </style>

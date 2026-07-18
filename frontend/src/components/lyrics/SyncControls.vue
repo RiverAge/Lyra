@@ -25,7 +25,7 @@
 
     <!-- 时间 -->
     <span class="shrink-0 font-mono text-xs tabular-nums text-tertiary">
-      {{ formatTime(audio.currentTime.value) }}<span class="mx-0.5 opacity-40">/</span>{{ formatTime(audio.effectiveDuration.value) }}
+      {{ formatTime(audio.currentTime.value) }}<span class="sc-dur-total mx-0.5 opacity-40">/</span><span class="sc-dur-total">{{ formatTime(audio.effectiveDuration.value) }}</span>
     </span>
 
     <!-- 转码/错误指示 -->
@@ -45,7 +45,7 @@
       min="0"
       max="1"
       step="0.01"
-      class="sc-vol h-1 w-14 cursor-pointer"
+      class="sc-vol h-1 w-14 max-sm:w-[42px] cursor-pointer"
       :value="audio.volume.value"
       @input="onVolumeInput"
     >
@@ -125,5 +125,13 @@ function formatTime(sec: number): string {
 /* 音量滑块：accent-color 无 tw 等价（width/height/cursor 转 tw，仅 accent-color 保留 scoped） */
 .sc-vol {
   accent-color: var(--theme-accent);
+}
+
+/* ---- 窄屏(<640px):压控件 ----
+   音量滑块 w-14(56px) → max-sm:w-[42px](template 内);时间只显当前(藏总时长)。 */
+@media (max-width: 640px) {
+  .sc-dur-total {
+    display: none;
+  }
 }
 </style>

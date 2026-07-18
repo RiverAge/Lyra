@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-3xl px-6 py-8">
+  <div class="mx-auto max-w-3xl px-6 py-8 max-sm:px-4">
     <!-- 页头 -->
     <div class="mb-7">
       <h1 class="mb-2 text-3xl font-semibold tracking-tight text-primary">设置</h1>
@@ -52,6 +52,27 @@
         <div v-if="!scannerStore.libraryConfigured" class="alert alert-neutral">
           库根目录未配置（LYRA_MUSIC_LIBRARY_ROOT 未设置），扫描不可用。
         </div>
+      </section>
+
+      <!-- 显示与动画区（纯前端偏好，localStorage 持久化） -->
+      <section class="mb-5 rounded-lg border border-line bg-surface p-5 shadow-card">
+        <div class="mb-5">
+          <h3 class="text-xl font-semibold tracking-tight text-primary">显示与动画</h3>
+          <p class="mt-0.5 text-sm text-secondary">界面动画偏好（仅本机浏览器）</p>
+        </div>
+
+        <label class="flex items-center justify-between gap-4">
+          <span class="flex flex-col gap-0.5">
+            <span class="text-sm font-medium text-primary">动画效果</span>
+            <span class="text-xs text-tertiary">关闭后所有过渡/弹层动画即时生效（无渐入渐出）</span>
+          </span>
+          <input
+            type="checkbox"
+            class="anim-toggle"
+            :checked="animEnabled"
+            @change="onToggleAnim"
+          >
+        </label>
       </section>
 
       <!-- 元数据爬取代理区 -->
@@ -140,21 +161,29 @@
 </template>
 
 <script setup lang="ts">
+/* global Event, HTMLInputElement */
 import { useSettingsStore } from "@/stores/settings"
 import { useScannerStore } from "@/stores/scanner"
+import { useAnimationPref } from "@/composables/useAnimationPref"
 import BaseButton from "@/components/ui/BaseButton.vue"
 import BaseInput from "@/components/ui/BaseInput.vue"
 
 /**
  * 设置页（B 布局重写）
  *
- * 三区：曲库（只读状态 + 扫描触发）/ 元数据爬取代理（可写）/ 环境信息（只读）
+ * 四区：曲库（只读状态）/ 显示与动画（纯前端偏好）/ 元数据爬取代理（可写）/ 环境信息（只读）
  * - settingsStore：可写配置 + 只读 config
- * - scannerStore：库根目录/扫描状态/触发扫描
+ * - scannerStore：库根目录/扫描状态
+ * - useAnimationPref：动画开关（localStorage，不走后端）
  */
 
 const settingsStore = useSettingsStore()
 const scannerStore = useScannerStore()
+const { enabled: animEnabled, setEnabled: setAnimEnabled } = useAnimationPref()
+
+function onToggleAnim(e: Event): void {
+  setAnimEnabled((e.target as HTMLInputElement).checked)
+}
 
 // 本地编辑态（与 store 已保存值分离，支持"撤销修改"）
 const creditsBaseUrl = ref("")
@@ -273,6 +302,17 @@ function formatBytes(bytes: number): string {
   word-break: break-all;
 }
 
+/* ---- 窄屏(<640px):info-row 140px+1fr → 单列堆叠(标签上,值下) ---- */
+@media (max-width: 640px) {
+  .info-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .info-k {
+    font-size: 11px;
+  }
+}
+
 /* 提示条配色（alert-success/fail/neutral 动态） */
 .alert {
   margin-top: 14px;
@@ -292,5 +332,37 @@ function formatBytes(bytes: number): string {
 .alert-neutral {
   background-color: var(--theme-bg-subtle);
   color: var(--theme-text-tertiary);
+}
+
+/* 动画开关：原生 checkbox 改造成 toggle（accent-color 无 tw 等价，整体 scoped） */
+.anim-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background-color var(--animate-duration-hover) ease;
+  flex-shrink: 0;
+}
+.anim-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--theme-bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--animate-duration-hover) ease;
+}
+.anim-toggle:checked {
+  background-color: var(--theme-accent);
+}
+.anim-toggle:checked::after {
+  transform: translateX(16px);
 }
 </style>

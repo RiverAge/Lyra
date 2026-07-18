@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-6xl px-6 py-8">
+  <div class="mx-auto max-w-6xl px-6 py-8 max-sm:px-4">
     <!-- 面包屑/返回 -->
     <div class="mb-5 flex items-center gap-2 text-sm text-secondary">
       <button class="inline-flex items-center gap-1.5 border-none bg-transparent py-0.5 font-inherit text-secondary transition-colors hover:text-primary" @click="goBack">
@@ -13,7 +13,7 @@
     <!-- 顶部工具条：标题 + source + 全量保存 -->
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
       <div class="flex items-baseline gap-3">
-        <h1 class="text-2xl font-semibold tracking-tight text-primary">逐字歌词编辑器</h1>
+        <h1 class="text-2xl font-semibold tracking-tight text-primary max-sm:text-xl">逐字歌词编辑器</h1>
         <span class="font-mono text-xs text-tertiary">track {{ trackId || "—" }}</span>
       </div>
 
@@ -23,7 +23,7 @@
           <div class="relative flex items-center">
             <select
               v-model="sourceSel"
-              class="select-bare input-ring w-[140px] cursor-pointer rounded-sm border border-line bg-surface py-1.5 pl-3 pr-7 text-[13px] text-primary hover:not-disabled:border-line-strong disabled:cursor-not-allowed disabled:opacity-50"
+              class="select-bare input-ring w-[140px] max-sm:w-[120px] cursor-pointer rounded-sm border border-line bg-surface py-1.5 pl-3 pr-7 text-[13px] text-primary hover:not-disabled:border-line-strong disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="store.loading || store.saving"
               @change="onSourceChange"
             >

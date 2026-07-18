@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-4xl px-6 py-8">
+  <div class="mx-auto max-w-4xl px-6 py-8 max-sm:px-4">
     <!-- 面包屑/返回 -->
     <div class="flex items-center gap-2 text-sm text-secondary">
       <button class="inline-flex items-center gap-1.5 border-none bg-transparent py-0.5 font-inherit text-secondary transition-colors hover:text-primary" @click="goBack">
@@ -86,8 +86,8 @@
         </div>
 
         <!-- 编辑器入口（播放转交歌词区 SyncControls） -->
-        <BaseButton variant="secondary" size="sm" icon="Edit3" class="shrink-0" @click="goLyricsEditor">
-          逐字编辑器
+        <BaseButton variant="secondary" size="sm" icon="Edit3" class="shrink-0" title="逐字编辑器" @click="goLyricsEditor">
+          <span class="max-sm:hidden">逐字编辑器</span>
         </BaseButton>
       </section>
 
@@ -287,6 +287,7 @@ function normalizeError(e: unknown): string {
   color: var(--theme-text-tertiary);
   cursor: pointer;
   padding: 2px 4px;
+  white-space: nowrap; /* 窄屏不换行溢出 */
 }
 .hero-summary:hover {
   color: var(--theme-text-secondary);
