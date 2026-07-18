@@ -23,7 +23,8 @@
 
     <!-- 浮层（Teleport + absolute，点击外部关闭） -->
     <Teleport to="body">
-      <div v-if="open" class="si-popover" :style="popoverStyle" @click.stop>
+      <Transition name="si-pop">
+        <div v-if="open" class="si-popover" :style="popoverStyle" @click.stop>
         <div class="si-pop-head">
           <div class="flex items-center gap-2">
             <span class="si-dot" :class="dotClass" />
@@ -91,8 +92,9 @@
             {{ scannerStore.connected ? "SSE 已连接" : "SSE 未连接" }}
           </div>
         </div>
-        <p v-if="scannerStore.triggerError" class="si-alert text-danger">{{ scannerStore.triggerError }}</p>
-      </div>
+          <p v-if="scannerStore.triggerError" class="si-alert text-danger">{{ scannerStore.triggerError }}</p>
+        </div>
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -370,6 +372,23 @@ function formatTimestamp(ts: number): string {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--theme-border-subtle);
+}
+
+/* 浮层过渡：opacity + 轻微下移缩放，对齐 SearchModal 曲线/时长 */
+.si-pop-enter-active,
+.si-pop-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.si-pop-enter-from,
+.si-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+}
+@media (prefers-reduced-motion: reduce) {
+  .si-pop-enter-active,
+  .si-pop-leave-active {
+    transition-duration: 0.01ms;
+  }
 }
 
 @media (max-width: 640px) {
