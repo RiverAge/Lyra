@@ -218,6 +218,8 @@ async def test_library_pagination(store: IndexStore, client: AsyncClient) -> Non
             updated_at=1750000000000 + i,
         )
 
+    # 列表按 id 降序（最近添加在前）：5 条记录 id=1..5，
+    # 第 1 页返回 id=5,4；第 2 页 id=3,2；第 3 页 id=1。
     # 第 1 页：limit=2, offset=0 → 2 items + total=5
     resp = await client.get("/api/library?limit=2&offset=0")
     assert resp.status_code == 200
@@ -226,8 +228,8 @@ async def test_library_pagination(store: IndexStore, client: AsyncClient) -> Non
     assert body["total"] == 5
     assert body["limit"] == 2
     assert body["offset"] == 0
-    assert body["items"][0]["id"] == "1"
-    assert body["items"][1]["id"] == "2"
+    assert body["items"][0]["id"] == "5"
+    assert body["items"][1]["id"] == "4"
 
     # 第 2 页：limit=2, offset=2 → 2 items
     resp = await client.get("/api/library?limit=2&offset=2")
@@ -235,14 +237,14 @@ async def test_library_pagination(store: IndexStore, client: AsyncClient) -> Non
     assert len(body["items"]) == 2
     assert body["total"] == 5
     assert body["items"][0]["id"] == "3"
-    assert body["items"][1]["id"] == "4"
+    assert body["items"][1]["id"] == "2"
 
     # 第 3 页：limit=2, offset=4 → 1 item（最后一页）
     resp = await client.get("/api/library?limit=2&offset=4")
     body = resp.json()
     assert len(body["items"]) == 1
     assert body["total"] == 5
-    assert body["items"][0]["id"] == "5"
+    assert body["items"][0]["id"] == "1"
 
     # 超出范围：offset=10 → 空列表
     resp = await client.get("/api/library?limit=20&offset=10")

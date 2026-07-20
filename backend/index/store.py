@@ -274,7 +274,7 @@ class IndexStore:
         """按过滤条件分页查询 tracks。无过滤等价于 list_tracks。
 
         Returns:
-            sqlite3.Row 列表，按 id 升序。
+            sqlite3.Row 列表，按 id 降序（最近添加在前）。
         """
         where_sql, params = self._build_track_filters(
             artist=artist, album=album, codec=codec
@@ -284,7 +284,7 @@ class IndexStore:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
                 f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks {where_sql} "
-                "ORDER BY id ASC LIMIT ? OFFSET ?",
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
                 params,
             )
             rows = await cursor.fetchall()
@@ -303,12 +303,12 @@ class IndexStore:
             offset: 偏移量。
 
         Returns:
-            sqlite3.Row 列表，按 id 升序。
+            sqlite3.Row 列表，按 id 降序（最近添加在前）。
         """
         async with self._connect() as db:
             db.row_factory = sqlite3.Row
             cursor = await db.execute(
-                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks ORDER BY id ASC LIMIT ? OFFSET ?",
+                f"SELECT {_TRACK_LIST_COLUMNS} FROM tracks ORDER BY id DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             )
             rows = await cursor.fetchall()
