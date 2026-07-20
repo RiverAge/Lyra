@@ -174,6 +174,10 @@ async function loadTrack(track: TrackItem, autoplay = false): Promise<void> {
 
   // 等 canplay（readyState>=HAVE_CURRENT_DATA）再播，避免 not-suitable reject
   await waitUntilPlayable(el)
+  // canplay 即转码首包就绪——无论是否自动播，转码 flag 都该清。
+  // 否则进详情页不自动播时 transcoding 永远 true（play/timeupdate 不触发），
+  // SyncControls 的 Loader2 一直转。
+  clearTranscoding()
   if (autoplay || playing.value) {
     void el.play().catch((e: unknown) => {
       error.value = `播放失败：${normalizeError(e)}`
