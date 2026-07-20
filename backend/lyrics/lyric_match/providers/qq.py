@@ -44,7 +44,7 @@ from backend.lyrics.lyric_match.crypto.tripledes_qq import decrypt_qrc
 from backend.lyrics.lyric_match.payload_cache import get_payload_cache
 from backend.lyrics.lyric_match.providers import LyricProvider
 from backend.lyrics.lyric_match.scoring import make_queries
-from backend.lyrics.lyric_match.types import REVIEW_SCORE, Candidate, TrackQuery
+from backend.lyrics.lyric_match.types import Candidate, TrackQuery
 
 DEFAULT_TIMEOUT = 15
 DEFAULT_PROXY = None  # direct connection by default; set only if QQ geo-blocks your egress IP
@@ -82,6 +82,31 @@ _CONTENTROMA_RE = re.compile(r'<contentroma\b[^>]*><!\[CDATA\[([0-9A-Fa-f]*)\]\]
 # structure but no real word-synced content (4 spans spelling 暂无歌词).
 _QRC_SPAN_TEXT_RE = re.compile(r'\)([^(]*)')
 
+# A real word-synced line in QRC LyricContent starts with [start,dur] — same
+# shape as NetEase yrc (converters._YRC_LINE_RE). Non-matching lines are
+# [ti:]/[ar:]/[al:]/[by:]/[offset:] metadata headers that _parse_yrc skips.
+# Used to count how many REAL lyric lines a decrypted QRC carries, so
+# find_qrc_candidate can skip a structurally-non-empty but content-thin QRC
+# (some songs return only the title + "Lyrics by" credit lines as word-synced
+# spans, with the actual lyrics missing) and keep probing for a full one.
+_QRC_LYRIC_LINE_RE = re.compile(r'^\s*\[\d+,\d+\]')
+
+# Below this many real word-synced lines, a QRC is considered truncated/credit-
+# only and find_qrc_candidate skips it to keep probing (real songs have dozens
+# of word-synced lines; title+credit-only QRCs parse to 1-2). Tuned against
+# Håll om mig (Nanne) where one QQ candidate returned 2 real lines and a
+# lower-scored same-song candidate carried the full 55-line逐字词.
+_QRC_MIN_REAL_LINES = 4
+
+# Minimum score for find_qrc_candidate to even probe a QQ candidate. LOWER than
+# scoring.REVIEW_SCORE (74): same-song QQ variants (lowercase title / remix /
+# karaoke / alt-album entries) often score 60-73 yet are the ONLY ones carrying
+# a full逐字 QRC, while the metadata-complete official entry at score≈100 is
+# the truncated credit-only one. REVIEW_SCORE (a same-song plausibility gate for
+# the main match) would block the only candidate with real lyrics. 60 keeps out
+# unrelated noise while letting through same-song variants worth probing.
+_QRC_PROBE_MIN_SCORE = 60
+
 # The decrypted QRC XML carries the lyric data in LyricContent="..."; extract
 # just that value before counting spans (the surrounding <QrcInfos> wrapper
 # would otherwise pollute the span count).
@@ -110,6 +135,23 @@ def _is_placeholder_qrc(qrc_xml: str) -> bool:
     joined = "".join(spans)
     # subset of placeholder chars only (allow stray header tokens that leaked in)
     return all(c in _PLACEHOLDER_CHARS for c in joined)
+
+
+def _qrc_real_line_count(qrc_xml: str) -> int:
+    """Count real word-synced lines ([start,dur]...) in a decrypted QRC.
+
+    Non-matching [ti:]/[ar:]/[offset:] metadata headers are excluded (they
+    carry no word spans). A structurally-non-empty QRC that parses to only 1-2
+    real lines is a credit-only/truncated QRC (title + "Lyrics by"署名), not a
+    real lyric — find_qrc_candidate uses this to skip it and keep probing.
+    """
+    if not qrc_xml:
+        return 0
+    m = _LYRIC_CONTENT_RE.search(qrc_xml)
+    if not m:
+        return 0
+    content = m.group(1).replace("&#10;", "\n").replace("&amp;", "&")
+    return sum(1 for ln in content.split("\n") if _QRC_LYRIC_LINE_RE.match(ln))
 
 
 def _strip_jsonp(text: str) -> str:
@@ -349,25 +391,51 @@ class QqProvider(LyricProvider):
 
         Used by runner's QRC fallback: when the NetEase best has no word-synced
         yrc, search the QQ pool for a candidate that actually carries word-synced
-        QRC. Probes in score-descending order, stops at first hit. Only probes
-        candidates scoring >= REVIEW_SCORE (plausible same-song matches), capped
-        at max_probe to bound request amplification. Hits the fetch cache so
+        QRC. Probes in score-descending order, stops at first hit. Capped at
+        max_probe to bound request amplification. Hits the fetch cache so
         candidates already fetched in the main path are free.
+
+        A QRC must pass TWO filters to count as a hit:
+          1. has a non-empty LyricContent and no error/placeholder status
+             (rejecting 暂无歌词 placeholders and decrypt errors);
+          2. carries at least _QRC_MIN_REAL_LINES real word-synced lines. Some
+             same-song QQ candidates return a structurally-valid but credit-only
+             QRC — just the title line + "Lyrics by：…" 署名 line as word-synced
+             spans (1-2 real lines, real lyrics missing). The highest-scored
+             candidate is most likely to be that credit-only one (title/album
+             metadata complete, which also means it's the "official" entry QQ
+             never finished逐字-recording); a lower-scored same-song variant often
+             carries the full逐字词. Skipping the thin one and keeping the probe
+             going rescues the full QRC instead of landing a 2-line TTML.
+
+        Probe score floor is _QRC_PROBE_MIN_SCORE (60), BELOW REVIEW_SCORE (74):
+        same-song QQ variants (lowercase title / remix / karaoke / alt-album
+        entries) often score 60-73 yet are the only ones carrying a full逐字 QRC,
+        while the metadata-complete official entry at score≈100 is the truncated
+        credit-only one. REVIEW_SCORE's threshold (a same-song plausibility gate
+        for the main match) is too strict for the probe fallback — it would
+        block the only candidate with real lyrics. 60 keeps out unrelated noise
+        while letting through same-song variants worth probing.
         """
         max_probe = 3
         probed = 0
         for c in sorted(qq_candidates, key=lambda x: x.score, reverse=True):
             if probed >= max_probe:
                 break
-            if c.score < REVIEW_SCORE:
+            if c.score < _QRC_PROBE_MIN_SCORE:
                 break
             probed += 1
             payload = await self.fetch_lyrics(c)
             if not payload:
                 continue
             xml = payload.get("_qrc_xml") or ""
-            if xml and "LyricContent=" in xml and not payload.get("_qrc_status"):
-                return c, payload
+            if not (xml and "LyricContent=" in xml) or payload.get("_qrc_status"):
+                continue
+            if _qrc_real_line_count(xml) < _QRC_MIN_REAL_LINES:
+                # Structurally valid but credit-only/truncated — skip and keep
+                # probing for a full逐字 QRC on a lower-scored same-song variant.
+                continue
+            return c, payload
         return None, None
 
     def lyric_summary(self, payload: dict[str, Any]) -> dict[str, Any]:

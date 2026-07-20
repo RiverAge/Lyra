@@ -38,7 +38,12 @@ from backend.lyrics.lyric_match.payload_cache import (
     reset_payload_cache_for_test,
 )
 from backend.lyrics.lyric_match.providers import LyricProvider, fetch_lyrics_cached
-from backend.lyrics.lyric_match.runner import match_query
+from backend.lyrics.lyric_match.providers.qq import QqProvider, _qrc_real_line_count
+from backend.lyrics.lyric_match.runner import (
+    _artists_share_containment,
+    _same_song_qq_candidates,
+    match_query,
+)
 from backend.lyrics.lyric_match.scoring import (
     AUTO_ACCEPT_SCORE,
     REVIEW_SCORE,
@@ -342,6 +347,179 @@ class TestConverters:
         assert "就" in ttml
         assert "别" in ttml
         assert ttml.count("<span begin=") == 2
+
+
+# ---------------------------------------------------------------------------
+# QRC 残缺词防护测试（QQ provider 选错候选导致 best_ttml 只有 2 行的回归）
+# ---------------------------------------------------------------------------
+# 真实场景：Håll om mig (Nanne) 在 QQ 有多个同曲候选，score 最高的那条
+# （元数据完整的"官方"条目）逐字 QRC 只有标题行 + "Lyrics by" 署名行两个
+# 真 span（real_lines=2），而 score 更低、artist 写全名 "nanne grönvall"
+# 的另一条反而有完整 55 行逐字词。旧逻辑 find_qrc_candidate 只判 QRC 非空
+# 就采用第一条，导致 best_ttml 只剩 2 行；_same_song_qq_candidates strict=False
+# 的 artist 集合全等又把那条全名候选滤掉，连 probe 机会都没有。以下用例固化
+# 两处修复：行数过滤跳过残缺 + artist 子串包含召回全名变体。
+
+
+# credit-only 残缺 QRC：只有标题 + "Lyrics by" 两行真 span（仿真实 Håll om mig
+# musicid=253521073 的 QRC 形态）。
+_QRC_CREDIT_ONLY_XML = (
+    '<QrcInfos><LyricInfo LyricCount="1">'
+    '<Lyric_1 LyricType="1" LyricContent="'
+    "[ti:Håll om mig]&#10;[ar:Nanne]&#10;[al:Alltid på väg]&#10;[by:]&#10;[offset:0]&#10;"
+    '[0,3520]Håll(0,741) (741,185)om(926,370) (1296,186)mig(1482,555) (2037,185)Nanne(2593,927)&#10;'
+    '[3520,3520]Lyrics(3520,185) (3705,185)by(3890,185)Nanne(4260,185)Grönvall(4630,185)&#10;'
+    '"></Lyric_1></LyricInfo></QrcInfos>'
+)
+
+# 完整逐字 QRC：10 行真 span（仿真实完整 QRC，行数足够过 _QRC_MIN_REAL_LINES=4）。
+_QRC_FULL_XML = (
+    '<QrcInfos><LyricInfo LyricCount="1">'
+    '<Lyric_1 LyricType="1" LyricContent="'
+    "[ti:håll om mig]&#10;[ar:nanne grönvall]&#10;[offset:0]&#10;"
+    "[0,2000]Att(0,500) (500,500)vår(1000,500)värld(1500,500)&#10;"
+    "[2000,2000]Mera(2000,500) (2500,500)kärlek(3000,500)varje(3500,500)dag&#10;"
+    "[4000,2000]Det(4000,500) (4500,500)vet(5000,500)både(5500,500)jag(6000,500)&#10;"
+    "[6000,2000]Låt(6000,500) (6500,500)oss(7000,500)börja(7500,500)här(8000,500)&#10;"
+    "[8000,2000]Så(8000,500) (8500,500)håll(9000,500)om(9500,500)mig(10000,500)&#10;"
+    "[10000,2000]Släpp(10000,500) (10500,500)inte(11000,500)taget(11500,500)&#10;"
+    "[12000,2000]Är(12000,500) (12500,500)som(13000,500)förhäxad(13500,500)&#10;"
+    "[14000,2000]Och(14000,500) (14500,500)jag(15000,500)vill(15500,500)ha(16000,500)&#10;"
+    "[16000,2000]Kom(16000,500) (16500,500)och(17000,500)håll(17500,500)om(18000,500)&#10;"
+    "[18000,2000]Ja(18000,500) (18500,500)kom(19000,500)håll(19500,500)om(20000,500)&#10;"
+    '"></Lyric_1></LyricInfo></QrcInfos>'
+)
+
+
+class TestQrcTruncationGuard:
+    """find_qrc_candidate 必须跳过 credit-only 残缺 QRC，选完整逐字词。"""
+
+    def test_qrc_real_line_count_credit_only_is_low(self) -> None:
+        """credit-only QRC（标题+署名两行）real_lines=2 < 4。"""
+        assert _qrc_real_line_count(_QRC_CREDIT_ONLY_XML) == 2
+
+    def test_qrc_real_line_count_full_is_high(self) -> None:
+        """完整逐字 QRC real_lines=10 ≥ 4。"""
+        assert _qrc_real_line_count(_QRC_FULL_XML) == 10
+
+    def test_qrc_real_line_count_empty(self) -> None:
+        """空 XML / 无 LyricContent → 0。"""
+        assert _qrc_real_line_count("") == 0
+        assert _qrc_real_line_count("<QrcInfos></QrcInfos>") == 0
+
+    def test_qrc_real_line_count_metadata_only(self) -> None:
+        """只有 [ti:]/[ar:] 元数据头、无 [start,dur] 真行 → 0（视为残缺）。"""
+        xml = (
+            '<QrcInfos><LyricInfo LyricCount="1">'
+            '<Lyric_1 LyricType="1" LyricContent="'
+            "[ti:x]&#10;[ar:y]&#10;[al:z]&#10;[offset:0]"
+            '"></Lyric_1></LyricInfo></QrcInfos>'
+        )
+        assert _qrc_real_line_count(xml) == 0
+
+    async def test_find_qrc_skips_credit_only_picks_full(self) -> None:
+        """两条候选：高 score 残缺 + 低 score 完整 → 选完整那条。
+
+        仿真实 Håll om mig：score 100 的官方条目 QRC 残缺（2 行），score 73
+        的全名变体完整（10 行）。find_qrc_candidate 按行数过滤跳过残缺，
+        probe 到完整那条采用。
+        """
+        # 用 monkeypatch 替换 fetch_lyrics，按 id 返回固定 payload
+        payloads = {
+            1: {"_qrc_xml": _QRC_CREDIT_ONLY_XML, "_provider_source": "qq"},
+            2: {"_qrc_xml": _QRC_FULL_XML, "_provider_source": "qq"},
+        }
+
+        async def fake_fetch(self, candidate):  # type: ignore[no-untyped-def]
+            return payloads.get(candidate.id)
+
+        provider = QqProvider.__new__(QqProvider)
+        # 跳过 __init__（不需要 httpx client），直接绑 find_qrc_candidate 用的方法
+        provider.fetch_lyrics = fake_fetch.__get__(provider, QqProvider)  # type: ignore[assignment]
+
+        cands = [
+            Candidate(id=1, title="Håll om mig", artists=["Nanne"], album="x", duration_ms=None, source="qq", score=100.0),
+            Candidate(id=2, title="håll om mig", artists=["nanne grönvall"], album="", duration_ms=None, source="qq", score=73.0),
+        ]
+        chosen, payload = await provider.find_qrc_candidate(cands)
+        assert chosen is not None
+        assert chosen.id == 2  # 跳过残缺 id=1，选完整 id=2
+        assert _qrc_real_line_count(payload["_qrc_xml"]) == 10
+
+    async def test_find_qrc_returns_none_when_all_truncated(self) -> None:
+        """所有候选都残缺 → None（不采用残缺词）。"""
+        async def fake_fetch(self, candidate):  # type: ignore[no-untyped-def]
+            return {"_qrc_xml": _QRC_CREDIT_ONLY_XML, "_provider_source": "qq"}
+
+        provider = QqProvider.__new__(QqProvider)
+        provider.fetch_lyrics = fake_fetch.__get__(provider, QqProvider)  # type: ignore[assignment]
+
+        cands = [
+            Candidate(id=1, title="x", artists=["Nanne"], album="", duration_ms=None, source="qq", score=100.0),
+            Candidate(id=2, title="y", artists=["Nanne"], album="", duration_ms=None, source="qq", score=80.0),
+        ]
+        chosen, payload = await provider.find_qrc_candidate(cands)
+        assert chosen is None
+        assert payload is None
+
+
+class TestSameSongQqArtistContainment:
+    """_same_song_qq_candidates strict=False 用 artist 子串包含召回全名变体。"""
+
+    def test_artists_share_containment_stage_name_in_full_name(self) -> None:
+        """stage name 'nanne' ⊂ full name 'nannegrönvall' → True。"""
+        assert _artists_share_containment(["nanne"], ["nannegrönvall"]) is True
+
+    def test_artists_share_containment_exact_equal(self) -> None:
+        """完全相同 → True（向后兼容原严格匹配的常见 case）。"""
+        assert _artists_share_containment(["nanne"], ["nanne"]) is True
+
+    def test_artists_share_containment_unrelated(self) -> None:
+        """不相关艺人 → False。"""
+        assert _artists_share_containment(["nanne"], ["abba"]) is False
+
+    def test_artists_share_containment_empty(self) -> None:
+        """空列表 → False。"""
+        assert _artists_share_containment([], ["nanne"]) is False
+        assert _artists_share_containment(["nanne"], []) is False
+
+    def test_same_song_qq_strict_false_recalls_full_name_variant(self) -> None:
+        """strict=False 召回 artist 全名变体（仿真实 Håll om mig）。
+
+        best 是 netease 'Nanne'，QQ 候选里有 'nanne grönvall' 全名条目
+        （唯一完整逐字词所在）。旧 artist 集合全等会滤掉它，子串包含能召回。
+        """
+        best = Candidate(
+            id=1421304018, title="Håll om mig", artists=["Nanne"],
+            album="Alltid på väg", duration_ms=182773, source="netease", score=100.0,
+        )
+        cands = [
+            Candidate(id=253521073, title="Håll om mig", artists=["Nanne"], album="x", duration_ms=None, source="qq", score=100.0),
+            Candidate(id=475658993, title="håll om mig", artists=["nanne grönvall"], album="", duration_ms=None, source="qq", score=73.0),
+            Candidate(id=584336278, title="remix", artists=["Nanne", "Soundfactory"], album="", duration_ms=None, source="qq", score=49.0),
+        ]
+        same = _same_song_qq_candidates(best, cands, strict=False)
+        ids = {c.id for c in same}
+        assert 253521073 in ids  # exact artist match still recalled
+        assert 475658993 in ids  # full-name variant now recalled (the fix)
+        # 584336278: Nanne+Soundfactory, neither is substring of the other side's
+        # single artist 'nanne' — 'nanne' ⊂ 'nanne' (the 'Nanne' entry) is true,
+        # so this remix IS recalled via the Nanne↔Nanne containment. That's fine:
+        # recall is loose, find_qrc_candidate's line-count gate rejects it later.
+        # The point of this test is the full-name variant is no longer dropped.
+
+    def test_same_song_qq_strict_true_keeps_exact_only(self) -> None:
+        """strict=True 仍要求 title+artist 精确相等（有 yrc 时 QQ 是锦上添花，绝不误切）。"""
+        best = Candidate(
+            id=1, title="Håll om mig", artists=["Nanne"], album="x",
+            duration_ms=None, source="netease", score=100.0,
+        )
+        cands = [
+            Candidate(id=2, title="Håll om mig", artists=["Nanne"], album="", duration_ms=None, source="qq", score=100.0),
+            Candidate(id=3, title="håll om mig", artists=["nanne grönvall"], album="", duration_ms=None, source="qq", score=73.0),
+        ]
+        same = _same_song_qq_candidates(best, cands, strict=True)
+        assert {c.id for c in same} == {2}  # only exact title+artist match
 
 
 # ---------------------------------------------------------------------------

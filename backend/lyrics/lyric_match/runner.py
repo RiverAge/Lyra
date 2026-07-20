@@ -300,28 +300,59 @@ def _same_song_qq_candidates(
     strict=False (used when NetEase best has NO yrc — QQ is the only word-synced
     source): match on ARTIST only, dropping the title requirement. Rescues songs
     whose QQ title is a truncated/variant of NetEase's that strict title
-    equality would block. find_qrc_candidate's ≥REVIEW_SCORE gate + real-QRC
-    check already rejects most mismatched QQ candidates.
+    equality would block. Artist matching is also loosened to SUBSTRING
+    containment (best artist compact ⊂ a QQ artist compact, either direction):
+    QQ often credits the full name ("Nanne Grönvall") where NetEase lists only
+    the stage name ("Nanne"), and the same-song variant carrying the full逐字 QRC
+    is frequently that full-name entry. Exact artist-set equality would filter
+    it out before find_qrc_candidate ever sees it. find_qrc_candidate's score
+    floor + real-line-count check + max_probe reject any noise the looser
+    recall lets through.
     """
     from backend.lyrics.lyric_match.scoring import compact_text
 
     best_title = compact_text(best.title)
-    best_artists = sorted(
+    best_artists = [
         compact_text(a) for a in (best.artists or []) if compact_text(a)
-    )
+    ]
     same: list[Candidate] = []
     for c in candidates:
         if c.source != "qq":
             continue
         if strict and compact_text(c.title) != best_title:
             continue
-        c_artists = sorted(
+        c_artists = [
             compact_text(a) for a in (c.artists or []) if compact_text(a)
-        )
-        if c_artists != best_artists:
-            continue
+        ]
+        if strict:
+            if sorted(c_artists) != sorted(best_artists):
+                continue
+        else:
+            # Loosened recall: a best artist and a QQ artist share a containment
+            # either way (stage name ⊂ full name, or vice versa).
+            if not _artists_share_containment(best_artists, c_artists):
+                continue
         same.append(c)
     return same
+
+
+def _artists_share_containment(
+    a_artists: list[str], b_artists: list[str],
+) -> bool:
+    """True if any compact-normalized artist from one side is a substring of any
+    artist from the other side. Catches "Nanne" vs "Nanne Grönvall" (same person,
+    QQ credits full name) which exact-set equality misses. Both directions
+    checked because either side can be the longer form.
+    """
+    for a in a_artists:
+        if not a:
+            continue
+        for b in b_artists:
+            if not b:
+                continue
+            if a in b or b in a:
+                return True
+    return False
 
 
 def _qq_lyric_is_real(lyric_info: dict[str, Any] | None) -> bool:
